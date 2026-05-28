@@ -25,7 +25,7 @@ const MainLayout = () => {
         {showSidebar && (
           <>
             <Sidebar user={user} isOpen={sidebarOpen} onClose={closeSidebar} isMobile />
-            <Sidebar user={user} onClose={() => {}} />
+            <Sidebar user={user} isOpen={false} onClose={() => {}} />
           </>
         )}
 
