@@ -1,3 +1,4 @@
+// controllers/menuController.js
 const MenuItem = require('../models/MenuItem');
 
 // ✅ Helper to parse FormData types correctly
@@ -19,7 +20,6 @@ const parseItemData = (body) => {
 
 /**
  * GET /api/menu
- * Get all available menu items with optional filters
  */
 const getMenuItems = async (req, res) => {
   try {
@@ -44,14 +44,11 @@ const getMenuItems = async (req, res) => {
 
 /**
  * GET /api/menu/:id
- * Get a single menu item by ID
  */
 const getMenuItem = async (req, res) => {
   try {
     const item = await MenuItem.findById(req.params.id);
-    if (!item) {
-      return res.status(404).json({ message: 'Menu item not found.' });
-    }
+    if (!item) return res.status(404).json({ message: 'Menu item not found.' });
     res.json({ item });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch menu item.', error: error.message });
@@ -60,14 +57,15 @@ const getMenuItem = async (req, res) => {
 
 /**
  * POST /api/menu
- * Create a new menu item (Admin only)
+ * ✅ FIXED: saves Cloudinary URL instead of local path
  */
 const createMenuItem = async (req, res) => {
   try {
     const itemData = parseItemData(req.body);
 
     if (req.file) {
-      itemData.imageUrl = `/uploads/${req.file.filename}`;
+      // Cloudinary gives us req.file.path which is the full https:// URL
+      itemData.imageUrl = req.file.path;
     }
 
     const item = await MenuItem.create(itemData);
@@ -83,14 +81,15 @@ const createMenuItem = async (req, res) => {
 
 /**
  * PUT /api/menu/:id
- * Update a menu item (Admin only)
+ * ✅ FIXED: saves Cloudinary URL instead of local path
  */
 const updateMenuItem = async (req, res) => {
   try {
     const itemData = parseItemData(req.body);
 
     if (req.file) {
-      itemData.imageUrl = `/uploads/${req.file.filename}`;
+      // Cloudinary gives us req.file.path which is the full https:// URL
+      itemData.imageUrl = req.file.path;
     }
 
     const item = await MenuItem.findByIdAndUpdate(req.params.id, itemData, {
@@ -98,9 +97,7 @@ const updateMenuItem = async (req, res) => {
       runValidators: true,
     });
 
-    if (!item) {
-      return res.status(404).json({ message: 'Menu item not found.' });
-    }
+    if (!item) return res.status(404).json({ message: 'Menu item not found.' });
 
     res.json({ item, message: 'Menu item updated successfully.' });
   } catch (error) {
@@ -114,14 +111,11 @@ const updateMenuItem = async (req, res) => {
 
 /**
  * DELETE /api/menu/:id
- * Delete a menu item (Admin only)
  */
 const deleteMenuItem = async (req, res) => {
   try {
     const item = await MenuItem.findByIdAndDelete(req.params.id);
-    if (!item) {
-      return res.status(404).json({ message: 'Menu item not found.' });
-    }
+    if (!item) return res.status(404).json({ message: 'Menu item not found.' });
     res.json({ message: 'Menu item deleted successfully.' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete menu item.', error: error.message });
@@ -130,14 +124,11 @@ const deleteMenuItem = async (req, res) => {
 
 /**
  * PATCH /api/menu/:id/toggle
- * Toggle menu item availability (Staff/Admin)
  */
 const toggleAvailability = async (req, res) => {
   try {
     const item = await MenuItem.findById(req.params.id);
-    if (!item) {
-      return res.status(404).json({ message: 'Menu item not found.' });
-    }
+    if (!item) return res.status(404).json({ message: 'Menu item not found.' });
 
     item.availability = !item.availability;
     await item.save();

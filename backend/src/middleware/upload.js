@@ -1,15 +1,23 @@
+// middleware/upload.js
 const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('cloudinary').v2;
 const path = require('path');
-const env = require('../config/env');
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.resolve(__dirname, '../../', env.UPLOAD_DIR));
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, `menu-${uniqueSuffix}${ext}`);
+// Configure Cloudinary using env variables
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Store images directly in Cloudinary (no local saving)
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'canteen-menu',       // images go into this folder in Cloudinary
+    allowed_formats: ['jpeg', 'jpg', 'png', 'gif', 'webp'],
+    transformation: [{ width: 800, crop: 'limit' }], // optional: auto-resize large images
   },
 });
 
