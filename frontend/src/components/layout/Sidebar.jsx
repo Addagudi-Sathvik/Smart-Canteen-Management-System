@@ -1,9 +1,9 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, UtensilsCrossed } from 'lucide-react';
-import { getNavForRole } from '../../config/navigation';
-import { motionSpring } from '../../config/navigation';
+import { getNavForRole, motionSpring } from '../../config/navigation';
 
 const SWIPE_CLOSE_THRESHOLD = 56;
 
@@ -13,23 +13,16 @@ const Sidebar = ({ user, isOpen, onClose, isMobile = false }) => {
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
 
+  const closeMenu = useCallback(() => {
+    onClose?.();
+  }, [onClose]);
+
   const isActive = (path) => {
     if (path === '/' || path === '/admin' || path === '/staff') {
       return location.pathname === path;
     }
     return location.pathname.startsWith(path);
   };
-
-  const handleClose = useCallback(
-    (e) => {
-      if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-      onClose?.();
-    },
-    [onClose]
-  );
 
   const handleTouchStart = (e) => {
     touchStartX.current = e.touches[0].clientX;
@@ -40,9 +33,24 @@ const Sidebar = ({ user, isOpen, onClose, isMobile = false }) => {
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = Math.abs(e.changedTouches[0].clientY - touchStartY.current);
     if (dy < 80 && dx < -SWIPE_CLOSE_THRESHOLD) {
-      handleClose();
+      closeMenu();
     }
   };
+
+  // Lock body scroll while mobile drawer is open
+  useEffect(() => {
+    if (!isMobile || !isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isMobile, isOpen]);
+
+  // Close drawer after navigation (mobile)
+  useEffect(() => {
+    if (isMobile) closeMenu();
+  }, [location.pathname, isMobile, closeMenu]);
 
   const content = (
     <>
@@ -50,7 +58,7 @@ const Sidebar = ({ user, isOpen, onClose, isMobile = false }) => {
         <Link
           to={links[0]?.to || '/'}
           className="flex items-center gap-2 text-brand-600 dark:text-brand-400 min-h-[44px]"
-          onClick={handleClose}
+          onClick={closeMenu}
         >
           <UtensilsCrossed className="w-6 h-6" />
           <span className="font-display font-bold text-lg">CanteenHub</span>
@@ -58,16 +66,11 @@ const Sidebar = ({ user, isOpen, onClose, isMobile = false }) => {
         {isMobile && (
           <button
             type="button"
-            onClick={handleClose}
-            onPointerUp={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleClose(e);
-            }}
-            className="relative z-[70] p-2.5 rounded-xl hover:bg-brand-50 dark:hover:bg-espresso-800 active:bg-brand-100 dark:active:bg-espresso-700 min-h-[48px] min-w-[48px] flex items-center justify-center touch-manipulation cursor-pointer"
+            onClick={closeMenu}
+            className="p-2.5 rounded-xl hover:bg-brand-50 dark:hover:bg-espresso-800 active:bg-brand-100 dark:active:bg-espresso-700 min-h-[48px] min-w-[48px] flex items-center justify-center touch-manipulation cursor-pointer"
             aria-label="Close menu"
           >
-            <X className="w-6 h-6 text-espresso-700 dark:text-espresso-200 pointer-events-none" />
+            <X className="w-6 h-6 text-espresso-700 dark:text-espresso-200" />
           </button>
         )}
       </div>
@@ -80,21 +83,21 @@ const Sidebar = ({ user, isOpen, onClose, isMobile = false }) => {
             <Link
               key={link.to}
               to={link.to}
-              onClick={handleClose}
+              onClick={closeMenu}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all min-h-[48px] touch-manipulation ${
                 active
                   ? 'nav-link-active shadow-soft'
-                  : 'text-espresso-600 dark:text-espresso-400 hover:bg-brand-50/80 dark:hover:bg-espresso-800/80'
+                  : 'text-espresso-600 dark:text-espresso-400 hover:bg-brand-50/80 dark:hover:bg-espresso-800/80 active:bg-brand-100/80 dark:active:bg-espresso-800'
               }`}
             >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              {link.label}
+              <Icon className="w-5 h-5 flex-shrink-0 pointer-events-none" />
+              <span className="pointer-events-none">{link.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-brand-200/40 dark:border-brand-800/30 shrink-0">
+      <div className="p-4 border-t border-brand-200/40 dark:border-brand-800/30 shrink-0 safe-bottom">
         <div className="flex items-center gap-3 px-2">
           {user?.avatar ? (
             <img src={user.avatar} alt="" className="w-9 h-9 rounded-full ring-2 ring-brand-200 dark:ring-brand-800" />
@@ -112,41 +115,44 @@ const Sidebar = ({ user, isOpen, onClose, isMobile = false }) => {
     </>
   );
 
+  const mobileDrawer = (
+    <AnimatePresence>
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-[200] lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation menu"
+        >
+          {/* Backdrop — sibling behind panel, does not wrap links */}
+          <motion.div
+            className="absolute inset-0 bg-espresso-950/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeMenu}
+            aria-hidden="true"
+          />
+
+          {/* Drawer panel — above backdrop */}
+          <motion.aside
+            className="absolute left-0 top-0 bottom-0 w-[min(288px,88vw)] max-w-full glass-strong flex flex-col shadow-elevated pointer-events-auto"
+            initial={{ x: '-100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-100%' }}
+            transition={motionSpring}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
+            {content}
+          </motion.aside>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
   if (isMobile) {
-    return (
-      <AnimatePresence>
-        {isOpen && (
-          <div className="fixed inset-0 z-[100] lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
-            <motion.button
-              type="button"
-              className="absolute inset-0 w-full h-full bg-espresso-950/60 backdrop-blur-sm border-0 cursor-default"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={handleClose}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                handleClose(e);
-              }}
-              aria-label="Close menu overlay"
-            />
-            <motion.aside
-              className="absolute left-0 top-0 bottom-0 w-[min(288px,88vw)] glass-strong flex flex-col shadow-elevated"
-              style={{ zIndex: 101 }}
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={motionSpring}
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {content}
-            </motion.aside>
-          </div>
-        )}
-      </AnimatePresence>
-    );
+    return createPortal(mobileDrawer, document.body);
   }
 
   return (
