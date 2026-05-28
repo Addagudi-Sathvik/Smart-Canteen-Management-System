@@ -55,13 +55,14 @@ const getDashboard = async (req, res) => {
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
-    const recentOrders = await Order.find({
+    // FIX: Renamed from recentOrders to recentWeekOrders to prevent duplicate declaration error
+    const recentWeekOrders = await Order.find({
       createdAt: { $gte: weekAgo },
       status: { $ne: 'cancelled' },
     });
 
     const itemCounts = {};
-    for (const order of recentOrders) {
+    for (const order of recentWeekOrders) {
       for (const item of order.items) {
         itemCounts[item.name] = (itemCounts[item.name] || 0) + item.quantity;
       }
@@ -109,6 +110,7 @@ const getDashboard = async (req, res) => {
     const totalStaff = await User.countDocuments({ role: 'staff' });
     const totalMenuItems = await MenuItem.countDocuments();
 
+    // Keeps the primary variable name required by your frontend payload
     const recentOrders = await Order.find()
       .populate('userId', 'name email')
       .sort({ createdAt: -1 })
