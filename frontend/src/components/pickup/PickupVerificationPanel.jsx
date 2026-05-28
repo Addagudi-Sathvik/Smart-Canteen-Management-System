@@ -1,7 +1,10 @@
 import { useState, useCallback } from 'react';
+import { useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { ordersAPI } from '../../utils/api';
+import { updateOrderFromSocket } from '../../store/slices/orderSlice';
+import { PICKUP_SUCCESS_MESSAGE } from '../../utils/orderStatus';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -28,12 +31,26 @@ const statusBadge = (status) => {
 };
 
 const PickupVerificationPanel = () => {
+  const dispatch = useDispatch();
   const [orderIdInput, setOrderIdInput] = useState('');
   const [qrPaste, setQrPaste] = useState('');
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
+
+  const applyVerifiedOrder = useCallback(
+    (order, message) => {
+      if (order) {
+        dispatch(updateOrderFromSocket(order));
+        setPreview(order);
+      }
+      toast.success(message || PICKUP_SUCCESS_MESSAGE, { duration: 5000 });
+      setQrPaste('');
+      setCameraActive(false);
+    },
+    [dispatch]
+  );
 
   const handleLookup = async (e) => {
     e?.preventDefault();
@@ -56,27 +73,29 @@ const PickupVerificationPanel = () => {
     }
   };
 
-  const handleVerifyFromQr = useCallback(async (payloadString) => {
-    const raw = payloadString?.trim();
-    if (!raw) return;
+  const handleVerifyFromQr = useCallback(
+    async (payloadString) => {
+      const raw = payloadString?.trim();
+      if (!raw) return;
 
-    setVerifying(true);
-    setCameraActive(false);
-    try {
-      const { data } = await ordersAPI.verifyQr({ qrPayload: raw });
-      setPreview(data.order);
-      setQrPaste('');
-      toast.success(data.message || 'Pickup verified!');
-    } catch (err) {
-      const msg = err.response?.data?.message || 'Verification failed';
-      if (err.response?.data?.order) {
-        setPreview(err.response.data.order);
+      setVerifying(true);
+      setCameraActive(false);
+      try {
+        const { data } = await ordersAPI.verifyQr({ qrPayload: raw });
+        applyVerifiedOrder(data.order, data.message || PICKUP_SUCCESS_MESSAGE);
+      } catch (err) {
+        const msg = err.response?.data?.message || 'Verification failed';
+        if (err.response?.data?.order) {
+          setPreview(err.response.data.order);
+          dispatch(updateOrderFromSocket(err.response.data.order));
+        }
+        toast.error(msg);
+      } finally {
+        setVerifying(false);
       }
-      toast.error(msg);
-    } finally {
-      setVerifying(false);
-    }
-  }, []);
+    },
+    [applyVerifiedOrder, dispatch]
+  );
 
   const handleVerifyScanned = async (e) => {
     e.preventDefault();
@@ -97,17 +116,23 @@ const PickupVerificationPanel = () => {
       toast.error('QR already used');
       return;
     }
+    if (preview.status !== 'ready') {
+      toast.error('Order must be Ready for Pickup before collection.');
+      return;
+    }
 
     setVerifying(true);
     try {
       const { data } = await ordersAPI.verifyPickup(preview._id, {
         qrToken: preview.qrToken,
       });
-      setPreview(data.order);
-      toast.success('Order marked as picked up!');
+      applyVerifiedOrder(data.order, data.message || PICKUP_SUCCESS_MESSAGE);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to verify pickup');
-      if (err.response?.data?.order) setPreview(err.response.data.order);
+      if (err.response?.data?.order) {
+        setPreview(err.response.data.order);
+        dispatch(updateOrderFromSocket(err.response.data.order));
+      }
     } finally {
       setVerifying(false);
     }
@@ -194,7 +219,9 @@ const PickupVerificationPanel = () => {
           >
             <Card
               className={
-                preview.qrUsed
+                preview.status === 'completed'
+                  ? 'border-accent-500/50'
+                  : preview.qrUsed
                   ? 'border-tomato-500/40'
                   : preview.status === 'ready'
                   ? 'border-accent-500/40'
@@ -211,11 +238,23 @@ const PickupVerificationPanel = () => {
                     preview.status
                   )}`}
                 >
-                  {preview.status}
+                  {preview.status === 'ready' ? 'Ready for Pickup' : preview.status}
                 </span>
               </div>
 
-              {preview.qrUsed && (
+              {preview.status === 'completed' && (
+                <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-accent-500/10 text-accent-700 dark:text-accent-300 text-sm font-medium">
+                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                  {PICKUP_SUCCESS_MESSAGE}
+                  {preview.pickupVerifiedAt && (
+                    <span className="text-espresso-500 font-normal block sm:inline sm:ml-2">
+                      {new Date(preview.pickupVerifiedAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {preview.qrUsed && preview.status !== 'completed' && (
                 <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-tomato-500/10 text-tomato-600 dark:text-tomato-400 text-sm font-medium">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   QR already used
@@ -262,11 +301,11 @@ const PickupVerificationPanel = () => {
                   className="w-full flex items-center justify-center gap-2 min-h-[48px] touch-manipulation"
                 >
                   <CheckCircle2 className="w-5 h-5" />
-                  Mark as Picked Up
+                  Mark as Collected
                 </Button>
               )}
 
-              {preview.status !== 'ready' && !preview.qrUsed && (
+              {preview.status !== 'ready' && preview.status !== 'completed' && !preview.qrUsed && (
                 <p className="text-sm text-espresso-500 text-center py-2">
                   Order must be <strong>Ready for Pickup</strong> before collection.
                 </p>

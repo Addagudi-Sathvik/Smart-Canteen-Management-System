@@ -10,6 +10,29 @@ const {
 let io;
 const setSocketIO = (socketIO) => { io = socketIO; };
 
+const STATUS_PIPELINE = ['pending', 'confirmed', 'preparing', 'ready', 'completed'];
+
+const isForwardStatus = (from, to) => {
+  const fromIdx = STATUS_PIPELINE.indexOf(from);
+  const toIdx = STATUS_PIPELINE.indexOf(to);
+  return fromIdx !== -1 && toIdx !== -1 && toIdx > fromIdx;
+};
+
+const emitOrderStatusUpdate = (order, notificationMessage) => {
+  if (!io) return;
+  const payload = order.toObject ? order.toObject() : order;
+  io.emit('order:statusUpdate', payload);
+  io.to('staff').emit('order:statusUpdate', payload);
+  io.to('role:staff').emit('order:statusUpdate', payload);
+  io.to('role:admin').emit('order:statusUpdate', payload);
+  io.emit('notification', {
+    type: 'status_update',
+    message: notificationMessage || `Order ${order.orderId} is now ${order.status}`,
+    orderId: order.orderId,
+    status: order.status,
+  });
+};
+
 /** Never expose raw qrToken to students. */
 const sanitizeOrderForStudent = (order) => {
   if (!order) return order;
@@ -99,11 +122,14 @@ const createOrder = async (req, res) => {
 
     await order.populate('userId', 'name email avatar');
 
-    // Emit real-time event
     if (io) {
-      io.emit('order:new', order.toObject());
+      const payload = order.toObject();
+      io.emit('order:new', payload);
+      io.to('staff').emit('order:new', payload);
+      io.to('role:staff').emit('order:new', payload);
+      io.to('role:admin').emit('order:new', payload);
       io.emit('notification', {
-        type:    'new_order',
+        type: 'new_order',
         message: `New order ${order.orderId} received`,
         orderId: order.orderId,
       });
@@ -120,14 +146,20 @@ const createOrder = async (req, res) => {
  */
 const getOrders = async (req, res) => {
   try {
-    const { status, search } = req.query;
+    const { status, search, filter: listFilter } = req.query;
     const filter = {};
 
     if (req.user.role === 'student') {
       filter.userId = req.user._id;
     }
 
-    if (status) {
+    if (listFilter === 'pending') {
+      filter.status = { $in: ['pending', 'confirmed', 'preparing'] };
+    } else if (listFilter === 'ready') {
+      filter.status = 'ready';
+    } else if (listFilter === 'completed') {
+      filter.status = 'completed';
+    } else if (status) {
       if (status === 'active') {
         filter.status = { $in: ['confirmed', 'preparing', 'ready'] };
       } else {
@@ -142,7 +174,7 @@ const getOrders = async (req, res) => {
     const orders = await Order.find(filter)
       .populate('userId', 'name email avatar')
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(listFilter || status === 'active' ? 100 : 50);
 
     res.json({ orders });
   } catch (error) {
@@ -213,39 +245,47 @@ const getActiveOrder = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    const validTransitions = {
-      confirmed: 'preparing',
-      preparing: 'ready',
-      ready:     'completed',
-    };
 
     const order = await Order.findById(req.params.id);
     if (!order) {
       return res.status(404).json({ message: 'Order not found.' });
     }
 
-    if (!validTransitions[order.status] || validTransitions[order.status] !== status) {
+    if (order.status === 'cancelled') {
+      return res.status(400).json({ message: 'Cancelled orders cannot be updated.' });
+    }
+
+    if (order.status === 'completed') {
+      return res.status(400).json({ message: 'Order is already completed.' });
+    }
+
+    if (!isForwardStatus(order.status, status)) {
       return res.status(400).json({
-        message: `Cannot transition from '${order.status}' to '${status}'.`,
-        allowedTransition: validTransitions[order.status] || 'none',
+        message: `Cannot change status from '${order.status}' to '${status}'. Only forward updates are allowed.`,
+      });
+    }
+
+    const needsPayment =
+      STATUS_PIPELINE.indexOf(status) >= STATUS_PIPELINE.indexOf('confirmed');
+    if (needsPayment && order.paymentStatus !== 'paid') {
+      return res.status(400).json({
+        message: 'Order must be paid before it can move to kitchen / pickup stages.',
       });
     }
 
     order.status = status;
-    order.statusTimestamps[status] = new Date();
-    await order.save();
+    if (!order.statusTimestamps[status]) {
+      order.statusTimestamps[status] = new Date();
+    }
 
+    if (status === 'completed') {
+      order.pickupVerifiedAt = order.pickupVerifiedAt || new Date();
+    }
+
+    await order.save();
     await order.populate('userId', 'name email avatar');
 
-    if (io) {
-      io.emit('order:statusUpdate', order.toObject());
-      io.emit('notification', {
-        type:    'status_update',
-        message: `Order ${order.orderId} is now ${status}`,
-        orderId: order.orderId,
-        status,
-      });
-    }
+    emitOrderStatusUpdate(order, `Order ${order.orderId} is now ${status}`);
 
     res.json({ order, message: `Order status updated to '${status}'.` });
   } catch (error) {
@@ -324,14 +364,10 @@ const cancelOrder = async (req, res) => {
 };
 
 const emitPickupVerified = (order) => {
-  if (!io) return;
-  io.emit('order:statusUpdate', order.toObject());
-  io.emit('notification', {
-    type:    'status_update',
-    message: `Order ${order.orderId} collected successfully`,
-    orderId: order.orderId,
-    status:  'completed',
-  });
+  emitOrderStatusUpdate(
+    order,
+    `Order ${order.orderId} successfully marked as Completed & Collected`
+  );
 };
 
 /**
@@ -545,7 +581,7 @@ const verifyQrPickup = async (req, res) => {
 
     res.json({
       order: result.order,
-      message: 'Pickup verified. Order marked as completed.',
+      message: 'Order successfully marked as Completed & Collected',
     });
   } catch (error) {
     console.error('[QR] verify-qr error', error.message);
@@ -582,7 +618,7 @@ const verifyPickup = async (req, res) => {
 
     res.json({
       order: result.order,
-      message: 'Pickup verified. Order marked as completed.',
+      message: 'Order successfully marked as Completed & Collected',
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to verify pickup.', error: error.message });

@@ -17,6 +17,7 @@ const OrderTracking = lazy(() => import('./pages/student/OrderTracking'));
 const OrderHistory = lazy(() => import('./pages/student/OrderHistory'));
 const StaffDashboard = lazy(() => import('./pages/staff/StaffDashboard'));
 const StaffInventory = lazy(() => import('./pages/staff/StaffInventory'));
+const StaffOrders = lazy(() => import('./pages/staff/StaffOrders'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const MenuManagement = lazy(() => import('./pages/admin/MenuManagement'));
 const UserManagement = lazy(() => import('./pages/admin/UserManagement'));
@@ -66,6 +67,7 @@ function App() {
 
             {/* Staff Routes */}
             <Route path="/staff" element={<StaffDashboard />} />
+            <Route path="/staff/orders" element={<StaffOrders />} />
             <Route path="/staff/inventory" element={<StaffInventory />} />
             <Route path="/staff/pickup" element={<StaffPickupVerification />} />
 

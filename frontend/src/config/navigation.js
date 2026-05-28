@@ -21,6 +21,7 @@ export const studentNav = [
 
 export const staffNav = [
   { to: '/staff', label: 'Queue', icon: ClipboardList },
+  { to: '/staff/orders', label: 'Orders', icon: ShoppingBag },
   { to: '/staff/pickup', label: 'Pickup QR', icon: QrCode },
   { to: '/staff/inventory', label: 'Inventory', icon: Package },
 ];
