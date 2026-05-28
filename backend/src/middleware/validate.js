@@ -38,12 +38,21 @@ const schemas = {
 
   order: z.object({
     items: z.array(z.object({
-      menuItem: z.string(),
-      name:     z.string(),
-      quantity: z.coerce.number().min(1),
-      price:    z.coerce.number().min(0),
+      menuItem: z.string().min(1, 'Invalid menu item id'),
+      quantity: z.coerce.number().int().min(1),
+      // Optional — prices/names are resolved from DB in orderController
+      name:  z.string().optional(),
+      price: z.coerce.number().min(0).optional(),
     })).min(1, 'At least one item is required'),
+    pickupSlot: z
+      .string()
+      .min(1, 'Please select a pickup time slot.')
+      .regex(
+        /^([1-9]|1[0-2]):[0-5][0-9]\s*(AM|PM)$/i,
+        'Pickup time must be in format like 10:00 AM (9:00 AM – 5:00 PM)'
+      ),
     notes: z.string().max(300).optional().default(''),
+    paymentMethod: z.enum(['online', 'counter']).optional().default('online'),
   }),
 
   statusUpdate: z.object({

@@ -35,14 +35,18 @@ const cartSlice = createSlice({
     },
 
     updateQuantity: (state, action) => {
-      const { menuItem, quantity } = action.payload;
-      const item = state.items.find((i) => i.menuItem === menuItem);
+      const { menuItem, id, quantity, delta } = action.payload;
+      const itemId = menuItem || id;
+      const item = state.items.find((i) => i.menuItem === itemId);
 
       if (item) {
-        if (quantity <= 0) {
-          state.items = state.items.filter((i) => i.menuItem !== menuItem);
+        const nextQty =
+          quantity !== undefined ? quantity : item.quantity + (delta ?? 0);
+
+        if (nextQty <= 0) {
+          state.items = state.items.filter((i) => i.menuItem !== itemId);
         } else {
-          item.quantity = quantity;
+          item.quantity = nextQty;
         }
       }
 

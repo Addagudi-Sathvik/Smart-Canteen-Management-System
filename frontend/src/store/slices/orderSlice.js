@@ -8,7 +8,13 @@ export const createOrder = createAsyncThunk(
       const { data } = await ordersAPI.create(orderData);
       return data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to create order');
+      const data = error.response?.data;
+      if (data?.errors?.length) {
+        return rejectWithValue(
+          data.errors.map((e) => e.message).join('. ') || data.message
+        );
+      }
+      return rejectWithValue(data?.message || 'Failed to create order');
     }
   }
 );

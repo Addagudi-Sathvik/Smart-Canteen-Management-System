@@ -59,6 +59,17 @@ export function isValidPickupSlot(slot) {
   return minutes >= PICKUP_OPEN_MINUTES && minutes <= PICKUP_CLOSE_MINUTES;
 }
 
+/** Canonical display string for API + validation (e.g. "10:00 AM"). */
+export function normalizePickupSlot(slot) {
+  if (!slot || typeof slot !== 'string') return '';
+  const trimmed = slot.trim().replace(/\s+/g, ' ');
+  const minutes = slotToMinutes(trimmed);
+  if (minutes === null || !isValidPickupSlot(trimmed)) return '';
+  const hour = Math.floor(minutes / 60);
+  const min = minutes % 60;
+  return formatPickupSlot(hour, min);
+}
+
 export function getDefaultPickupSlot(slots) {
   if (!slots?.length) return '';
   const now = new Date();

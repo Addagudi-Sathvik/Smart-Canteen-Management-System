@@ -16,13 +16,14 @@ import {
   generatePickupSlots,
   getDefaultPickupSlot,
   isValidPickupSlot,
+  normalizePickupSlot,
   slotToTimeInput,
   timeInputToPickupSlot,
 } from '../../utils/pickupTime';
 import { X, ShoppingBag, Trash2, Plus, Minus, Clock, ArrowRight } from 'lucide-react';
 
 const PICKUP_SLOTS = generatePickupSlots();
-const DEFAULT_SLOT = getDefaultPickupSlot(PICKUP_SLOTS);
+const DEFAULT_SLOT = normalizePickupSlot(getDefaultPickupSlot(PICKUP_SLOTS)) || PICKUP_SLOTS[0];
 
 const getErrorMessage = (err) =>
   typeof err === 'string' ? err : err?.message || 'Something went wrong. Please try again.';
@@ -48,9 +49,11 @@ const CartDrawer = () => {
   const canPlaceOrder = pickupSlot?.trim() && isValidPickupSlot(pickupSlot);
 
   const selectQuickSlot = useCallback((slot) => {
+    const normalized = normalizePickupSlot(slot);
+    if (!normalized) return;
     setPickupMode('quick');
-    setPickupSlot(slot);
-    setCustomTimeValue(slotToTimeInput(slot));
+    setPickupSlot(normalized);
+    setCustomTimeValue(slotToTimeInput(normalized));
   }, []);
 
   const switchToCustom = useCallback(() => {
@@ -63,8 +66,8 @@ const CartDrawer = () => {
     setCustomTimeValue(value);
     if (!value) return;
 
-    const slot = timeInputToPickupSlot(value);
-    if (isValidPickupSlot(slot)) {
+    const slot = normalizePickupSlot(timeInputToPickupSlot(value));
+    if (slot) {
       setPickupSlot(slot);
     } else {
       toast.error('Pickup time must be between 9:00 AM and 5:00 PM.');
@@ -86,19 +89,28 @@ const CartDrawer = () => {
       return;
     }
 
-    const slot = pickupSlot?.trim();
-    if (!slot || !isValidPickupSlot(slot)) {
+    const slot = normalizePickupSlot(pickupSlot);
+    if (!slot) {
       toast.error('Please select a pickup time slot.');
+      return;
+    }
+
+    const orderItems = items
+      .filter((item) => item.menuItem && item.quantity > 0)
+      .map((item) => ({
+        menuItem: String(item.menuItem),
+        quantity: item.quantity,
+      }));
+
+    if (orderItems.length === 0) {
+      toast.error('Your cart is empty!');
       return;
     }
 
     setPlacing(true);
     try {
       const orderData = {
-        items: items.map((item) => ({
-          menuItem: item._id,
-          quantity: item.quantity,
-        })),
+        items: orderItems,
         pickupSlot: slot,
         notes: notes.trim(),
         paymentMethod: 'online',
@@ -199,7 +211,7 @@ const CartDrawer = () => {
                 <div className="p-4 space-y-4">
                   {items.map((item) => (
                     <motion.div
-                      key={item._id}
+                      key={item.menuItem}
                       layout
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -223,7 +235,9 @@ const CartDrawer = () => {
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button
                           type="button"
-                          onClick={() => dispatch(updateQuantity({ id: item._id, delta: -1 }))}
+                          onClick={() =>
+                            dispatch(updateQuantity({ menuItem: item.menuItem, delta: -1 }))
+                          }
                           className="w-8 h-8 rounded-full bg-white dark:bg-espresso-700 flex items-center justify-center hover:bg-brand-500 hover:text-white transition-colors border border-brand-200/50 dark:border-espresso-600"
                         >
                           <Minus className="w-3 h-3" />
@@ -233,14 +247,16 @@ const CartDrawer = () => {
                         </span>
                         <button
                           type="button"
-                          onClick={() => dispatch(updateQuantity({ id: item._id, delta: 1 }))}
+                          onClick={() =>
+                            dispatch(updateQuantity({ menuItem: item.menuItem, delta: 1 }))
+                          }
                           className="w-8 h-8 rounded-full bg-white dark:bg-espresso-700 flex items-center justify-center hover:bg-brand-500 hover:text-white transition-colors border border-brand-200/50 dark:border-espresso-600"
                         >
                           <Plus className="w-3 h-3" />
                         </button>
                         <button
                           type="button"
-                          onClick={() => dispatch(removeFromCart(item._id))}
+                          onClick={() => dispatch(removeFromCart(item.menuItem))}
                           className="w-8 h-8 rounded-full bg-tomato-500/10 flex items-center justify-center hover:bg-tomato-500 hover:text-white text-tomato-600 transition-colors ml-1"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -265,7 +281,12 @@ const CartDrawer = () => {
                     <div className="flex gap-2 mb-3">
                       <button
                         type="button"
-                        onClick={() => setPickupMode('quick')}
+                        onClick={() => {
+                          setPickupMode('quick');
+                          if (!pickupSlot || !isValidPickupSlot(pickupSlot)) {
+                            selectQuickSlot(DEFAULT_SLOT);
+                          }
+                        }}
                         className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
                           pickupMode === 'quick'
                             ? 'bg-brand-600 text-white'
