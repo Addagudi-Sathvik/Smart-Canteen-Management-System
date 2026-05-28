@@ -5,19 +5,12 @@ import { motion } from 'framer-motion';
 import { fetchActiveOrder } from '../../store/slices/orderSlice';
 import { fetchMenuItems } from '../../store/slices/menuSlice';
 import Card from '../../components/ui/Card';
-import Badge from '../../components/ui/Badge';
+import OrderStatusBadge from '../../components/orders/OrderStatusBadge';
 import { staggerContainer, staggerItem } from '../../config/navigation';
 import {
   ShoppingBag, Clock, Utensils, History,
   ChevronRight, Coffee, Pizza, CupSoda, Sandwich, Flame,
 } from 'lucide-react';
-
-const statusVariant = {
-  confirmed: 'info',
-  preparing: 'warning',
-  ready:     'success',
-  completed: 'neutral',
-};
 
 // Maps status to a friendly message shown on the active order banner
 const statusMessages = {
@@ -133,9 +126,7 @@ const StudentDashboard = () => {
                     />
                     <span className="text-xs font-bold text-brand-100 uppercase tracking-widest">Active Order</span>
                   </div>
-                  <Badge variant={statusVariant[activeOrder.status] || 'info'}>
-                    {activeOrder.status}
-                  </Badge>
+                  <OrderStatusBadge status={activeOrder.status} />
                 </div>
 
                 <div className="flex items-end justify-between">

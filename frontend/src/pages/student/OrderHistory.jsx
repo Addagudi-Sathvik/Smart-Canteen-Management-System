@@ -5,18 +5,9 @@ import { fetchMyOrders, reorder } from '../../store/slices/orderSlice';
 import toast from 'react-hot-toast';
 import PageHeader from '../../components/ui/PageHeader';
 import EmptyState from '../../components/ui/EmptyState';
-import Badge from '../../components/ui/Badge';
+import OrderStatusBadge from '../../components/orders/OrderStatusBadge';
 import { ListSkeleton } from '../../components/ui/Skeleton';
 import { History, RotateCcw, Clock } from 'lucide-react';
-
-const statusVariant = {
-  confirmed: 'info',
-  preparing: 'warning',
-  ready: 'success',
-  completed: 'neutral',
-  cancelled: 'danger',
-  pending: 'neutral',
-};
 
 const OrderHistory = () => {
   const dispatch = useDispatch();
@@ -72,7 +63,7 @@ const OrderHistory = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="text-lg font-display font-bold text-espresso-900 dark:text-espresso-50">{order.orderId}</span>
-                    <Badge variant={statusVariant[order.status]}>{order.status}</Badge>
+                    <OrderStatusBadge status={order.status} />
                   </div>
                   <p className="text-sm text-espresso-500 truncate">
                     {order.items?.map((i) => `${i.quantity}× ${i.name}`).join(', ')}

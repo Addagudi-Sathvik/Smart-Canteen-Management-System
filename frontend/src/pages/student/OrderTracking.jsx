@@ -5,57 +5,21 @@ import { motion } from 'framer-motion';
 import QRCode from 'qrcode';
 import { fetchActiveOrder, fetchMyOrders } from '../../store/slices/orderSlice';
 import { ordersAPI } from '../../utils/api';
+import { getStatusTheme, PROGRESS_STEP_CONFIG } from '../../utils/orderStatus';
 import Card from '../../components/ui/Card';
 import EmptyState from '../../components/ui/EmptyState';
 import PageHeader from '../../components/ui/PageHeader';
+import OrderStatusBadge from '../../components/orders/OrderStatusBadge';
+import OrderProgress from '../../components/orders/OrderProgress';
 import {
-  ShoppingBag,
-  ChefHat,
-  Package,
-  CheckCircle2,
   ArrowLeft,
   Clock,
   QrCode,
   ShieldCheck,
   AlertCircle,
+  CheckCircle2,
+  ShoppingBag,
 } from 'lucide-react';
-
-const statusFlow = ['confirmed', 'preparing', 'ready', 'completed'];
-
-const statusConfig = {
-  confirmed: {
-    icon: ShoppingBag,
-    label: 'Order Confirmed',
-    description: 'Your order has been received',
-    color: 'text-sky-500',
-    bg: 'bg-sky-100 dark:bg-sky-900/30',
-    line: 'bg-sky-500',
-  },
-  preparing: {
-    icon: ChefHat,
-    label: 'Preparing',
-    description: 'Our chefs are cooking your food',
-    color: 'text-brand-500',
-    bg: 'bg-brand-100 dark:bg-brand-900/30',
-    line: 'bg-brand-500',
-  },
-  ready: {
-    icon: Package,
-    label: 'Ready for Pickup',
-    description: 'Show your QR code at the counter',
-    color: 'text-accent-500',
-    bg: 'bg-accent-100 dark:bg-accent-900/30',
-    line: 'bg-accent-500',
-  },
-  completed: {
-    icon: CheckCircle2,
-    label: 'Completed',
-    description: 'Enjoy your meal!',
-    color: 'text-espresso-500',
-    bg: 'bg-espresso-100 dark:bg-espresso-800',
-    line: 'bg-espresso-400',
-  },
-};
 
 const SecureOrderQR = ({ qrPayload, orderId, disabled }) => {
   const canvasRef = useRef(null);
@@ -106,7 +70,7 @@ const SecureOrderQR = ({ qrPayload, orderId, disabled }) => {
         className="rounded-2xl border-4 border-white dark:border-espresso-800 shadow-elevated"
       />
       <div className="flex items-center gap-1.5 text-xs text-espresso-500">
-        <ShieldCheck className="w-3.5 h-3.5 text-accent-500" />
+        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
         Secure single-use pickup code
       </div>
     </div>
@@ -174,8 +138,6 @@ const OrderTracking = () => {
     loadQr();
   }, [loadQr]);
 
-  const currentStatusIndex = order ? statusFlow.indexOf(order.status) : -1;
-
   if (loading && !order) {
     return (
       <div className="max-w-2xl mx-auto space-y-4">
@@ -201,7 +163,8 @@ const OrderTracking = () => {
   }
 
   const isActive = ['confirmed', 'preparing', 'ready'].includes(order.status);
-  const progressPercent = Math.max(0, (currentStatusIndex / (statusFlow.length - 1)) * 100);
+  const theme = getStatusTheme(order.status);
+  const stepHint = PROGRESS_STEP_CONFIG[order.status]?.description;
   const showQr =
     order.paymentStatus === 'paid' &&
     !order.qrUsed &&
@@ -231,18 +194,22 @@ const OrderTracking = () => {
             </div>
           )}
 
-          <p className="text-xs font-semibold uppercase tracking-wide text-espresso-400 mt-2">
-            {order.status.replace('_', ' ')}
-            {order.paymentStatus === 'paid' && ' · Paid'}
-          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+            <OrderStatusBadge status={order.status} size="lg" />
+            {order.paymentStatus === 'paid' && (
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/30">
+                Paid
+              </span>
+            )}
+          </div>
 
-          {isActive && (
+          {isActive && stepHint && (
             <motion.p
-              className="text-sm text-espresso-500 dark:text-espresso-400 font-medium mt-2"
-              animate={{ opacity: [1, 0.6, 1] }}
+              className={`text-sm font-medium mt-3 ${theme.iconColor}`}
+              animate={{ opacity: [1, 0.65, 1] }}
               transition={{ duration: 2, repeat: Infinity }}
             >
-              {statusConfig[order.status]?.description}
+              {stepHint}
             </motion.p>
           )}
         </Card>
@@ -254,7 +221,13 @@ const OrderTracking = () => {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: 'spring', stiffness: 300, damping: 28 }}
         >
-          <Card className="text-center bg-gradient-to-b from-brand-50/80 to-white dark:from-brand-900/20 dark:to-espresso-950 border border-brand-200/40 dark:border-brand-800/30">
+          <Card
+            className={`text-center border-2 ${
+              order.status === 'ready'
+                ? 'border-emerald-300 dark:border-emerald-700 bg-gradient-to-b from-emerald-50/80 to-white dark:from-emerald-900/20 dark:to-espresso-950'
+                : 'border-brand-200/40 dark:border-brand-800/30 bg-gradient-to-b from-brand-50/80 to-white dark:from-brand-900/20 dark:to-espresso-950'
+            }`}
+          >
             <div className="flex items-center justify-center gap-2 mb-1">
               <QrCode className="w-5 h-5 text-brand-600" />
               <h2 className="text-lg font-bold text-espresso-900 dark:text-espresso-50">
@@ -297,88 +270,31 @@ const OrderTracking = () => {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="flex items-center justify-center gap-2 p-4 rounded-2xl bg-accent-50 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 text-sm font-semibold"
+          className="flex items-center justify-center gap-2 p-4 rounded-2xl bg-slate-100 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 text-sm font-semibold border border-slate-200 dark:border-slate-700"
         >
-          <CheckCircle2 className="w-5 h-5" />
+          <CheckCircle2 className="w-5 h-5 text-slate-500" />
           Pickup verified — enjoy your meal!
         </motion.div>
       )}
 
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
         <Card>
           <h2 className="text-lg font-bold text-espresso-900 dark:text-espresso-50 mb-6">
             Order Progress
           </h2>
-          <div className="relative pl-2">
-            <div className="absolute left-[23px] top-2 bottom-2 w-0.5 bg-espresso-200 dark:bg-espresso-800 rounded-full" />
-            <motion.div
-              className="absolute left-[23px] top-2 w-0.5 bg-gradient-to-b from-brand-500 to-accent-500 rounded-full origin-top"
-              initial={{ height: 0 }}
-              animate={{ height: `${progressPercent}%` }}
-              transition={{ duration: 0.8, ease: 'easeOut' }}
-            />
-            <div className="space-y-6">
-              {statusFlow.map((status, index) => {
-                const config = statusConfig[status];
-                const Icon = config.icon;
-                const isCompleted = currentStatusIndex >= index;
-                const isCurrent = currentStatusIndex === index;
-
-                return (
-                  <motion.div
-                    key={status}
-                    className="relative flex items-start gap-4"
-                    initial={{ opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.15 + index * 0.08 }}
-                  >
-                    <div
-                      className={`relative z-10 w-12 h-12 rounded-2xl flex items-center justify-center ${
-                        isCompleted ? config.bg : 'bg-espresso-100 dark:bg-espresso-800'
-                      }`}
-                    >
-                      <Icon
-                        className={`w-5 h-5 ${isCompleted ? config.color : 'text-espresso-400'}`}
-                      />
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center gap-2">
-                        <h3
-                          className={`font-semibold ${
-                            isCompleted
-                              ? 'text-espresso-900 dark:text-espresso-100'
-                              : 'text-espresso-400'
-                          }`}
-                        >
-                          {config.label}
-                        </h3>
-                        {isCurrent && (
-                          <motion.span
-                            className="w-2.5 h-2.5 bg-brand-500 rounded-full"
-                            animate={{ scale: [1, 1.4, 1] }}
-                            transition={{ duration: 1.2, repeat: Infinity }}
-                          />
-                        )}
-                      </div>
-                      <p
-                        className={`text-sm mt-0.5 ${
-                          isCompleted
-                            ? 'text-espresso-500'
-                            : 'text-espresso-300 dark:text-espresso-600'
-                        }`}
-                      >
-                        {config.description}
-                      </p>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </div>
+          <OrderProgress currentStatus={order.status} />
         </Card>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
         <Card>
           <h2 className="text-lg font-bold mb-4">Order Details</h2>
           <div className="space-y-3">

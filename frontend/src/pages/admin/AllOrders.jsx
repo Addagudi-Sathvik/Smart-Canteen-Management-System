@@ -5,12 +5,7 @@ import { Search, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import Modal from '../../components/ui/Modal';
 import PageHeader from '../../components/ui/PageHeader';
 import Input from '../../components/ui/Input';
-import Badge from '../../components/ui/Badge';
-
-const statusVariant = {
-  pending: 'neutral', confirmed: 'info', preparing: 'warning',
-  ready: 'success', completed: 'neutral', cancelled: 'danger',
-};
+import OrderStatusBadge from '../../components/orders/OrderStatusBadge';
 
 const AllOrders = () => {
   const [orders, setOrders] = useState([]);
@@ -98,7 +93,7 @@ const AllOrders = () => {
                   </td>
                   <td className="px-4 py-3 text-right font-semibold">₹{order.totalAmount}</td>
                   <td className="px-4 py-3 text-center">
-                    <Badge variant={statusVariant[order.status]}>{order.status}</Badge>
+                    <OrderStatusBadge status={order.status} />
                   </td>
                   <td className="px-4 py-3 text-right text-sm text-gray-500">{formatDate(order.createdAt)}</td>
                   <td className="px-4 py-3 text-center">
@@ -140,7 +135,7 @@ const AllOrders = () => {
         {selectedOrder && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <Badge variant={statusVariant[selectedOrder.status]}>{selectedOrder.status}</Badge>
+              <OrderStatusBadge status={selectedOrder.status} />
               <span className="text-sm text-gray-500">{formatDate(selectedOrder.createdAt)}</span>
             </div>
             <div>

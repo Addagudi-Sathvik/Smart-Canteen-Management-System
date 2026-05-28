@@ -7,8 +7,7 @@ import { connectSocket } from '../../utils/socket';
 import { StatsSkeleton } from '../../components/ui/Skeleton';
 import StatCard from '../../components/ui/StatCard';
 import Card from '../../components/ui/Card';
-import Badge from '../../components/ui/Badge';
-import { STATUS_LABELS } from '../../utils/orderStatus';
+import OrderStatusBadge from '../../components/orders/OrderStatusBadge';
 import { staggerContainer, staggerItem } from '../../config/navigation';
 import {
   ShoppingBag,
@@ -29,15 +28,6 @@ const getGreeting = () => {
   if (h < 12) return 'Good Morning';
   if (h < 17) return 'Good Afternoon';
   return 'Good Evening';
-};
-
-const statusVariant = {
-  pending: 'neutral',
-  confirmed: 'info',
-  preparing: 'warning',
-  ready: 'success',
-  completed: 'neutral',
-  cancelled: 'danger',
 };
 
 const quickActions = [
@@ -340,9 +330,7 @@ const AdminDashboard = () => {
                           {formatTime(order.createdAt)}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <Badge variant={statusVariant[order.status] || 'neutral'}>
-                            {STATUS_LABELS[order.status] || order.status}
-                          </Badge>
+                          <OrderStatusBadge status={order.status} />
                         </td>
                       </motion.tr>
                     ))}
@@ -364,9 +352,7 @@ const AdminDashboard = () => {
                     </div>
                     <div className="text-right shrink-0">
                       <p className="font-semibold text-brand-600">₹{order.totalAmount}</p>
-                      <Badge variant={statusVariant[order.status] || 'neutral'} className="mt-1">
-                        {STATUS_LABELS[order.status] || order.status}
-                      </Badge>
+                      <OrderStatusBadge status={order.status} className="mt-1" />
                     </div>
                   </div>
                 ))}

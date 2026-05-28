@@ -6,7 +6,7 @@ import { fetchAllOrders, updateOrderStatus } from '../../store/slices/orderSlice
 import { connectSocket } from '../../utils/socket';
 import PageHeader from '../../components/ui/PageHeader';
 import Input from '../../components/ui/Input';
-import Badge from '../../components/ui/Badge';
+import OrderStatusBadge from '../../components/orders/OrderStatusBadge';
 import {
   getSelectableStatuses,
   STATUS_LABELS,
@@ -20,15 +20,6 @@ const FILTER_TABS = [
   { value: 'ready', label: 'Ready for Pickup' },
   { value: 'completed', label: 'Completed' },
 ];
-
-const statusVariant = {
-  pending: 'neutral',
-  confirmed: 'info',
-  preparing: 'warning',
-  ready: 'success',
-  completed: 'neutral',
-  cancelled: 'danger',
-};
 
 const formatOrderTime = (date) =>
   new Date(date).toLocaleString([], {
@@ -99,11 +90,7 @@ const StaffOrders = () => {
     const isUpdating = updatingId === order._id;
 
     if (order.status === 'completed' || order.status === 'cancelled') {
-      return (
-        <Badge variant={statusVariant[order.status]}>
-          {STATUS_LABELS[order.status]}
-        </Badge>
-      );
+      return <OrderStatusBadge status={order.status} />;
     }
 
     if (order.paymentStatus !== 'paid') {
@@ -115,11 +102,7 @@ const StaffOrders = () => {
     }
 
     if (options.length === 0) {
-      return (
-        <Badge variant={statusVariant[order.status]}>
-          {STATUS_LABELS[order.status]}
-        </Badge>
-      );
+      return <OrderStatusBadge status={order.status} />;
     }
 
     return (

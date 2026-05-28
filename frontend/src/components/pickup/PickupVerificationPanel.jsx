@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { ordersAPI } from '../../utils/api';
 import { updateOrderFromSocket } from '../../store/slices/orderSlice';
 import { PICKUP_SUCCESS_MESSAGE } from '../../utils/orderStatus';
+import OrderStatusBadge from '../orders/OrderStatusBadge';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -19,16 +20,6 @@ import {
   ShoppingBag,
   ScanLine,
 } from 'lucide-react';
-
-const statusBadge = (status) => {
-  const map = {
-    confirmed: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
-    preparing: 'bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300',
-    ready: 'bg-accent-100 text-accent-700 dark:bg-accent-900/40 dark:text-accent-300',
-    completed: 'bg-espresso-100 text-espresso-600 dark:bg-espresso-800 dark:text-espresso-300',
-  };
-  return map[status] || map.confirmed;
-};
 
 const PickupVerificationPanel = () => {
   const dispatch = useDispatch();
@@ -233,13 +224,7 @@ const PickupVerificationPanel = () => {
                   <p className="text-sm text-espresso-500">Order</p>
                   <p className="text-2xl font-display font-bold">{preview.orderId}</p>
                 </div>
-                <span
-                  className={`text-xs font-bold px-3 py-1 rounded-full uppercase ${statusBadge(
-                    preview.status
-                  )}`}
-                >
-                  {preview.status === 'ready' ? 'Ready for Pickup' : preview.status}
-                </span>
+                <OrderStatusBadge status={preview.status} size="md" />
               </div>
 
               {preview.status === 'completed' && (

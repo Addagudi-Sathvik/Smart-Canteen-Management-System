@@ -667,6 +667,72 @@
     border-color: rgba(255, 255, 255, 0.12);
   }
 
+  /* Order status badges (app-wide color scheme) */
+  .badge-status-pending {
+    @apply badge;
+    background: rgba(120, 113, 108, 0.12);
+    color: #57534e;
+    border: 1px solid rgba(120, 113, 108, 0.2);
+  }
+
+  .dark .badge-status-pending {
+    background: rgba(168, 162, 158, 0.12);
+    color: #d6d3d1;
+    border-color: rgba(168, 162, 158, 0.22);
+  }
+
+  .badge-status-confirmed {
+    @apply badge;
+    background: rgba(245, 158, 11, 0.14);
+    color: #b45309;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+  }
+
+  .dark .badge-status-confirmed {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fcd34d;
+    border-color: rgba(245, 158, 11, 0.32);
+  }
+
+  .badge-status-preparing {
+    @apply badge;
+    background: rgba(249, 115, 22, 0.14);
+    color: #c2410c;
+    border: 1px solid rgba(249, 115, 22, 0.28);
+  }
+
+  .dark .badge-status-preparing {
+    background: rgba(249, 115, 22, 0.18);
+    color: #fdba74;
+    border-color: rgba(249, 115, 22, 0.32);
+  }
+
+  .badge-status-ready {
+    @apply badge;
+    background: rgba(16, 185, 129, 0.14);
+    color: #047857;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+  }
+
+  .dark .badge-status-ready {
+    background: rgba(16, 185, 129, 0.18);
+    color: #6ee7b7;
+    border-color: rgba(16, 185, 129, 0.32);
+  }
+
+  .badge-status-completed {
+    @apply badge;
+    background: rgba(100, 116, 139, 0.14);
+    color: #475569;
+    border: 1px solid rgba(100, 116, 139, 0.25);
+  }
+
+  .dark .badge-status-completed {
+    background: rgba(148, 163, 184, 0.15);
+    color: #cbd5e1;
+    border-color: rgba(148, 163, 184, 0.28);
+  }
+
   /* Status dot inside badges */
   .badge-dot {
     display: inline-block;
