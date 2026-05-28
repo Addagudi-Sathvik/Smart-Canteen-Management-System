@@ -37,6 +37,12 @@ const Sidebar = ({ user, isOpen, onClose, isMobile = false }) => {
     }
   };
 
+  /** Reliable close on mobile — pointer + click, no preventDefault */
+  const handleClosePress = (e) => {
+    e.stopPropagation();
+    closeMenu();
+  };
+
   // Lock body scroll while mobile drawer is open
   useEffect(() => {
     if (!isMobile || !isOpen) return;
@@ -47,35 +53,49 @@ const Sidebar = ({ user, isOpen, onClose, isMobile = false }) => {
     };
   }, [isMobile, isOpen]);
 
-  // Close drawer after navigation (mobile)
+  // Close drawer after route change (not on every mount — only when open)
+  const prevPath = useRef(location.pathname);
   useEffect(() => {
-    if (isMobile) closeMenu();
-  }, [location.pathname, isMobile, closeMenu]);
+    if (!isMobile || !isOpen) {
+      prevPath.current = location.pathname;
+      return;
+    }
+    if (prevPath.current !== location.pathname) {
+      closeMenu();
+    }
+    prevPath.current = location.pathname;
+  }, [location.pathname, isMobile, isOpen, closeMenu]);
 
   const content = (
     <>
-      <div className="flex items-center justify-between p-4 border-b border-brand-200/40 dark:border-brand-800/30 shrink-0">
+      <div className="relative z-20 grid grid-cols-[1fr_auto] items-center gap-2 p-4 border-b border-brand-200/40 dark:border-brand-800/30 shrink-0">
         <Link
           to={links[0]?.to || '/'}
-          className="flex items-center gap-2 text-brand-600 dark:text-brand-400 min-h-[44px]"
+          className="flex items-center gap-2 text-brand-600 dark:text-brand-400 min-h-[44px] min-w-0 overflow-hidden"
           onClick={closeMenu}
         >
-          <UtensilsCrossed className="w-6 h-6" />
-          <span className="font-display font-bold text-lg">CanteenHub</span>
+          <UtensilsCrossed className="w-6 h-6 flex-shrink-0" />
+          <span className="font-display font-bold text-lg truncate">CanteenHub</span>
         </Link>
         {isMobile && (
           <button
             type="button"
-            onClick={closeMenu}
-            className="p-2.5 rounded-xl hover:bg-brand-50 dark:hover:bg-espresso-800 active:bg-brand-100 dark:active:bg-espresso-700 min-h-[48px] min-w-[48px] flex items-center justify-center touch-manipulation cursor-pointer"
+            onPointerDown={handleClosePress}
+            onClick={handleClosePress}
+            className="relative z-[100] flex-shrink-0 p-2.5 rounded-xl bg-espresso-100 dark:bg-espresso-800 hover:bg-brand-50 dark:hover:bg-espresso-700 active:scale-95 min-h-[48px] min-w-[48px] flex items-center justify-center touch-manipulation cursor-pointer isolate"
             aria-label="Close menu"
           >
-            <X className="w-6 h-6 text-espresso-700 dark:text-espresso-200" />
+            <X className="w-6 h-6 text-espresso-800 dark:text-espresso-100" strokeWidth={2.5} />
           </button>
         )}
       </div>
 
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto overscroll-contain" aria-label="Sidebar navigation">
+      <nav
+        className="flex-1 p-3 space-y-1 overflow-y-auto overscroll-contain"
+        aria-label="Sidebar navigation"
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
+      >
         {links.map((link) => {
           const Icon = link.icon;
           const active = isActive(link.to);
@@ -126,7 +146,7 @@ const Sidebar = ({ user, isOpen, onClose, isMobile = false }) => {
         >
           {/* Backdrop — sibling behind panel, does not wrap links */}
           <motion.div
-            className="absolute inset-0 bg-espresso-950/60 backdrop-blur-sm"
+            className="absolute inset-0 z-0 bg-espresso-950/60 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -136,13 +156,11 @@ const Sidebar = ({ user, isOpen, onClose, isMobile = false }) => {
 
           {/* Drawer panel — above backdrop */}
           <motion.aside
-            className="absolute left-0 top-0 bottom-0 w-[min(288px,88vw)] max-w-full glass-strong flex flex-col shadow-elevated pointer-events-auto"
+            className="absolute left-0 top-0 bottom-0 z-10 w-[min(288px,88vw)] max-w-full glass-strong flex flex-col shadow-elevated pointer-events-auto"
             initial={{ x: '-100%' }}
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={motionSpring}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
           >
             {content}
           </motion.aside>
