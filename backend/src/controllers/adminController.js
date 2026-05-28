@@ -109,6 +109,17 @@ const getDashboard = async (req, res) => {
     const totalStaff = await User.countDocuments({ role: 'staff' });
     const totalMenuItems = await MenuItem.countDocuments();
 
+    const recentOrders = await Order.find()
+      .populate('userId', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(8)
+      .lean();
+
+    const pendingOrders =
+      ordersByStatus.pending +
+      ordersByStatus.confirmed +
+      ordersByStatus.preparing;
+
     res.json({
       metrics: {
         totalOrdersToday,
@@ -118,10 +129,14 @@ const getDashboard = async (req, res) => {
         totalStudents,
         totalStaff,
         totalMenuItems,
+        pendingOrders,
+        readyForPickup: ordersByStatus.ready,
+        completedToday: ordersByStatus.completed,
       },
       ordersByStatus,
       popularItems,
       dailyOrders,
+      recentOrders,
       systemState,
     });
   } catch (error) {
