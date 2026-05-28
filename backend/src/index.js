@@ -10,6 +10,8 @@ const { initializeSocket } = require('./socket');
 const { setSocketIO } = require('./controllers/orderController');
 const errorHandler = require('./middleware/errorHandler');
 
+const allowedOrigin = process.env.FRONTEND_URL || "http://localhost:5173";
+
 // Import routes
 const authRoutes = require('./routes/auth');
 const menuRoutes = require('./routes/menu');
@@ -24,7 +26,7 @@ const server = http.createServer(app);
 
 // Middleware  ← paymentRoutes must come AFTER these
 app.use(cors({
-  origin: env.FRONTEND_URL,
+  origin: allowedOrigin,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -72,11 +74,12 @@ setSocketIO(io);
 // Connect to MongoDB and start server
 connectDB()
   .then(() => {
-    server.listen(env.PORT, () => {
+    const port = process.env.PORT || 5000;
+    server.listen(port, () => {
       console.log(`\n🚀 Canteen Backend Server`);
-      console.log(`📡 Port: ${env.PORT}`);
+      console.log(`📡 Port: ${port}`);
       console.log(`🌍 Environment: ${env.NODE_ENV}`);
-      console.log(`🔗 Frontend URL: ${env.FRONTEND_URL}`);
+      console.log(`🔗 Frontend URL: ${allowedOrigin}`);
       console.log(`📅 ${new Date().toISOString()}\n`);
     });
   })
