@@ -4,6 +4,8 @@ import { useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
 import { adminAPI } from '../../utils/api';
 import { connectSocket } from '../../utils/socket';
+import { playOrderAlert } from '../../utils/playOrderAlert';
+import toast from 'react-hot-toast';
 import { StatsSkeleton } from '../../components/ui/Skeleton';
 import StatCard from '../../components/ui/StatCard';
 import Card from '../../components/ui/Card';
@@ -13,14 +15,14 @@ import {
   ShoppingBag,
   Clock,
   Package,
-  CheckCircle2,
   TrendingUp,
   AlertCircle,
-  QrCode,
+  CheckCircle2,
   UtensilsCrossed,
-  Users,
+  History,
+  Monitor,
+  Store,
   ChevronRight,
-  ClipboardList,
 } from 'lucide-react';
 
 const getGreeting = () => {
@@ -30,34 +32,38 @@ const getGreeting = () => {
   return 'Good Evening';
 };
 
-const quickActions = [
+const hubCards = [
   {
-    label: 'View All Orders',
-    description: 'Browse and filter every order',
-    icon: ClipboardList,
-    to: '/admin/orders',
-    gradient: 'from-brand-500 to-brand-600',
+    label: 'New Counter Order',
+    description: 'Walk-in cash POS checkout',
+    icon: Store,
+    to: '/admin/counter',
+    gradient: 'from-brand-500 to-amber-600',
+    emoji: '🛒',
   },
   {
-    label: 'Pickup Verification',
-    description: 'Scan student QR at counter',
-    icon: QrCode,
-    to: '/admin/pickup',
-    gradient: 'from-accent-500 to-emerald-600',
+    label: 'Live Order Monitor',
+    description: 'Real-time kitchen queue',
+    icon: Monitor,
+    to: '/admin/live-orders',
+    gradient: 'from-orange-500 to-red-500',
+    emoji: '👨‍🍳',
   },
   {
-    label: 'Manage Menu',
-    description: 'Items, prices & availability',
+    label: 'Menu Manager',
+    description: 'Inventory & pricing',
     icon: UtensilsCrossed,
     to: '/admin/menu',
     gradient: 'from-amber-500 to-orange-600',
+    emoji: '📋',
   },
   {
-    label: 'User Management',
-    description: 'Students, staff & roles',
-    icon: Users,
-    to: '/admin/users',
-    gradient: 'from-sky-500 to-indigo-600',
+    label: 'Past Order Logs',
+    description: 'Searchable sales ledger',
+    icon: History,
+    to: '/admin/orders',
+    gradient: 'from-espresso-600 to-espresso-800',
+    emoji: '📊',
   },
 ];
 
@@ -90,7 +96,6 @@ const AdminDashboard = () => {
     fetchDashboard();
   }, [fetchDashboard]);
 
-  // Real-time refresh when orders change
   useEffect(() => {
     const socket = connectSocket();
     socket.emit('join:role', 'admin');
@@ -102,12 +107,40 @@ const AdminDashboard = () => {
       debounceTimer = setTimeout(() => fetchDashboard(true), 400);
     };
 
-    socket.on('order:new', scheduleRefresh);
+    const onNewOrder = (order) => {
+      playOrderAlert();
+      scheduleRefresh();
+      toast(
+        (t) => (
+          <div className="flex flex-col gap-2 max-w-sm">
+            <p className="font-bold text-espresso-900 dark:text-espresso-50">
+              New order — accept now
+            </p>
+            <p className="text-sm text-espresso-600 dark:text-espresso-400">
+              <strong>{order.orderId}</strong>
+              {order.totalAmount != null && ` · ₹${order.totalAmount}`}
+            </p>
+            <Link
+              to="/admin/live-orders"
+              className="text-sm font-semibold text-brand-600 hover:underline"
+              onClick={() => toast.dismiss(t.id)}
+            >
+              Open live monitor →
+            </Link>
+          </div>
+        ),
+        { id: `admin-new-${order.orderId}`, duration: 12000 }
+      );
+    };
+
+    socket.on('order:new', onNewOrder);
+    socket.on('newOrderPlaced', onNewOrder);
     socket.on('order:statusUpdate', scheduleRefresh);
 
     return () => {
       clearTimeout(debounceTimer);
-      socket.off('order:new', scheduleRefresh);
+      socket.off('order:new', onNewOrder);
+      socket.off('newOrderPlaced', onNewOrder);
       socket.off('order:statusUpdate', scheduleRefresh);
     };
   }, [fetchDashboard]);
@@ -115,7 +148,7 @@ const AdminDashboard = () => {
   if (loading && !data) {
     return (
       <div className="space-y-6">
-        <div className="h-24 rounded-3xl bg-brand-50/50 dark:bg-espresso-900/50 animate-pulse" />
+        <div className="h-28 rounded-3xl bg-brand-50/50 dark:bg-espresso-900/50 animate-pulse" />
         <StatsSkeleton />
       </div>
     );
@@ -129,42 +162,37 @@ const AdminDashboard = () => {
     );
   }
 
-  const { metrics, ordersByStatus, recentOrders = [], systemState } = data;
+  const { metrics, recentOrders = [], systemState } = data;
   const firstName = user?.name?.split(' ')[0] || 'Admin';
 
-  const statCards = [
+  const kpiCards = [
     {
-      label: 'Total Orders Today',
-      value: metrics.totalOrdersToday ?? 0,
-      icon: ShoppingBag,
+      label: "Today's Revenue",
+      value: `₹${metrics.revenueToday ?? 0}`,
+      icon: TrendingUp,
+      color: 'text-brand-600',
+      bg: 'bg-brand-50 dark:bg-brand-900/25',
     },
     {
-      label: 'Pending Orders',
-      value: metrics.pendingOrders ?? 0,
+      label: 'Active Orders',
+      value: metrics.activeOrders ?? metrics.pendingOrders ?? 0,
       icon: Clock,
       color: 'text-amber-600',
       bg: 'bg-amber-50 dark:bg-amber-900/25',
     },
     {
       label: 'Ready for Pickup',
-      value: metrics.readyForPickup ?? ordersByStatus?.ready ?? 0,
+      value: metrics.readyForPickup ?? 0,
       icon: Package,
-      color: 'text-accent-600',
-      bg: 'bg-accent-50 dark:bg-accent-900/25',
-    },
-    {
-      label: 'Completed Today',
-      value: metrics.completedToday ?? ordersByStatus?.completed ?? 0,
-      icon: CheckCircle2,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50 dark:bg-emerald-900/25',
     },
     {
-      label: 'Revenue Today',
-      value: `₹${metrics.revenueToday ?? 0}`,
-      icon: TrendingUp,
-      color: 'text-brand-600',
-      bg: 'bg-brand-50 dark:bg-brand-900/25',
+      label: 'Menu Items',
+      value: metrics.activeMenuItems ?? metrics.totalMenuItems ?? 0,
+      icon: UtensilsCrossed,
+      color: 'text-sky-600',
+      bg: 'bg-sky-50 dark:bg-sky-900/25',
     },
   ];
 
@@ -175,95 +203,81 @@ const AdminDashboard = () => {
       animate="show"
       className="space-y-6"
     >
-      {/* Welcome */}
+      {/* Greeting — admin hub */}
       <motion.div variants={staggerItem}>
         <div
-          className="relative rounded-3xl overflow-hidden p-6 sm:p-8 border border-brand-200/50 dark:border-brand-800/30"
+          className="relative rounded-3xl overflow-hidden p-6 sm:p-8"
           style={{
             background:
-              'linear-gradient(135deg, rgba(28,24,20,0.95) 0%, rgba(41,37,36,0.92) 50%, rgba(120,53,15,0.35) 100%)',
+              'linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 55%, #ECFDF5 100%)',
           }}
         >
-          <div className="absolute top-0 right-0 w-56 h-56 rounded-full bg-brand-500/20 blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-40 h-40 rounded-full bg-accent-500/15 blur-2xl translate-y-1/2 pointer-events-none" />
-
+          <div className="absolute top-0 right-0 w-48 h-48 rounded-full bg-brand-200/50 blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none" />
           <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <p className="text-xs font-bold text-brand-400 uppercase tracking-[0.2em] mb-1">
+              <p className="text-xs font-bold text-brand-600 uppercase tracking-[0.18em] mb-1">
                 {getGreeting()}
               </p>
-              <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">
-                {firstName}!
+              <h1 className="text-2xl sm:text-3xl font-display font-bold text-espresso-900">
+                Hey, {firstName}!
               </h1>
-              <p className="text-sm text-espresso-300 mt-1 flex items-center gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-300 text-xs font-semibold border border-brand-500/30">
+              <p className="text-sm text-espresso-600 mt-1 flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full bg-espresso-900/10 text-xs font-semibold">
                   Admin
                 </span>
-                Canteen operations at a glance
+                Canteen operations hub
               </p>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              {systemState?.orderingOpen ? (
-                <span className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-accent-500/20 text-accent-300 border border-accent-500/30">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Ordering open
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-tomato-500/20 text-tomato-300 border border-tomato-500/30">
-                  <AlertCircle className="w-4 h-4" />
-                  Ordering closed
-                </span>
-              )}
-            </div>
+            {systemState?.orderingOpen ? (
+              <span className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-100 text-emerald-800 text-sm font-semibold">
+                <CheckCircle2 className="w-4 h-4" />
+                Ordering open
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-red-100 text-red-800 text-sm font-semibold">
+                <AlertCircle className="w-4 h-4" />
+                Ordering closed
+              </span>
+            )}
           </div>
-          {systemState?.message && (
-            <p className="relative text-sm text-espresso-400 mt-4 border-t border-white/10 pt-4">
-              {systemState.message}
-            </p>
-          )}
         </div>
       </motion.div>
 
-      {/* Stats */}
-      <motion.div
-        variants={staggerItem}
-        className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4"
-      >
-        {statCards.map((card, i) => (
-          <StatCard key={card.label} {...card} index={i} />
-        ))}
-      </motion.div>
-
-      {/* Quick actions */}
+      {/* Hub grid */}
       <motion.div variants={staggerItem}>
-        <h2 className="text-lg font-bold text-espresso-900 dark:text-espresso-50 mb-3">
-          Quick actions
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {quickActions.map((action, i) => {
-            const Icon = action.icon;
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {hubCards.map((card) => {
+            const Icon = card.icon;
             return (
               <Link
-                key={action.to}
-                to={action.to}
-                className="group glass rounded-2xl p-5 card-hover min-h-[120px] flex flex-col"
+                key={card.to}
+                to={card.to}
+                className="group relative rounded-2xl overflow-hidden min-h-[130px] p-4 card-hover"
               >
                 <div
-                  className={`w-12 h-12 rounded-xl bg-gradient-to-br ${action.gradient} flex items-center justify-center shadow-soft mb-3 group-hover:scale-105 transition-transform`}
-                >
-                  <Icon className="w-6 h-6 text-white" />
+                  className={`absolute inset-0 bg-gradient-to-br ${card.gradient} opacity-95`}
+                />
+                <div className="relative text-white h-full flex flex-col">
+                  <span className="text-2xl mb-2">{card.emoji}</span>
+                  <Icon className="w-5 h-5 mb-1 opacity-90" />
+                  <p className="font-bold text-sm sm:text-base leading-tight">{card.label}</p>
+                  <p className="text-xs text-white/80 mt-1 flex-1">{card.description}</p>
+                  <ChevronRight className="w-4 h-4 mt-2 group-hover:translate-x-0.5 transition-transform" />
                 </div>
-                <p className="font-bold text-espresso-900 dark:text-espresso-50 flex items-center gap-1">
-                  {action.label}
-                  <ChevronRight className="w-4 h-4 text-espresso-400 group-hover:translate-x-0.5 transition-transform" />
-                </p>
-                <p className="text-sm text-espresso-500 dark:text-espresso-400 mt-1">
-                  {action.description}
-                </p>
               </Link>
             );
           })}
         </div>
+      </motion.div>
+
+      {/* KPI strip */}
+      <motion.div
+        variants={staggerItem}
+        className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
+      >
+        {kpiCards.map((card, i) => (
+          <StatCard key={card.label} {...card} index={i} />
+        ))}
       </motion.div>
 
       {/* Recent orders */}
@@ -273,91 +287,37 @@ const AdminDashboard = () => {
             Recent orders
           </h2>
           <Link
-            to="/admin/orders"
-            className="text-sm font-semibold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1"
+            to="/admin/live-orders"
+            className="text-sm font-semibold text-brand-600 flex items-center gap-1"
           >
-            View all
+            Live monitor
             <ChevronRight className="w-4 h-4" />
           </Link>
         </div>
 
         <Card className="p-0 overflow-hidden">
           {recentOrders.length === 0 ? (
-            <p className="text-center text-espresso-500 py-12">No orders yet</p>
+            <p className="text-center text-espresso-500 py-10">No orders yet</p>
           ) : (
-            <>
-              {/* Desktop table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-espresso-100 dark:border-espresso-800 bg-brand-50/30 dark:bg-espresso-900/40">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-espresso-500 uppercase">
-                        Order
-                      </th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-espresso-500 uppercase">
-                        Student
-                      </th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-espresso-500 uppercase">
-                        Total
-                      </th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-espresso-500 uppercase">
-                        Time
-                      </th>
-                      <th className="text-center px-4 py-3 text-xs font-semibold text-espresso-500 uppercase">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-espresso-100 dark:divide-espresso-800">
-                    {recentOrders.map((order, i) => (
-                      <motion.tr
-                        key={order._id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: i * 0.03 }}
-                        className="hover:bg-brand-50/20 dark:hover:bg-espresso-800/30"
-                      >
-                        <td className="px-4 py-3 font-bold text-espresso-900 dark:text-espresso-100">
-                          {order.orderId}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-espresso-600 dark:text-espresso-400">
-                          {order.userId?.name || '—'}
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold text-brand-600">
-                          ₹{order.totalAmount}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-espresso-500">
-                          {formatTime(order.createdAt)}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <OrderStatusBadge status={order.status} />
-                        </td>
-                      </motion.tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile list */}
-              <div className="md:hidden divide-y divide-espresso-100 dark:divide-espresso-800">
-                {recentOrders.map((order) => (
-                  <div key={order._id} className="p-4 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-bold text-espresso-900 dark:text-espresso-100">
-                        {order.orderId}
-                      </p>
-                      <p className="text-sm text-espresso-500 truncate">
-                        {order.userId?.name || 'Unknown'} · {formatTime(order.createdAt)}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-semibold text-brand-600">₹{order.totalAmount}</p>
-                      <OrderStatusBadge status={order.status} className="mt-1" />
-                    </div>
+            <div className="divide-y divide-espresso-100 dark:divide-espresso-800">
+              {recentOrders.slice(0, 6).map((order) => (
+                <div
+                  key={order._id}
+                  className="flex items-center justify-between gap-3 p-4 hover:bg-brand-50/20 dark:hover:bg-espresso-800/20"
+                >
+                  <div className="min-w-0">
+                    <p className="font-bold">{order.orderId}</p>
+                    <p className="text-sm text-espresso-500 truncate">
+                      {order.userId?.name || '—'} · {formatTime(order.createdAt)}
+                    </p>
                   </div>
-                ))}
-              </div>
-            </>
+                  <div className="text-right shrink-0">
+                    <p className="font-semibold text-brand-600">₹{order.totalAmount}</p>
+                    <OrderStatusBadge status={order.status} size="sm" className="mt-1" />
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </Card>
       </motion.div>

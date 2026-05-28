@@ -82,6 +82,29 @@ const schemas = {
     qrToken: z.string().min(32, 'Verification token is required'),
   }),
 
+  adminStatusUpdate: z.object({
+    status: z.enum(['confirmed', 'preparing', 'ready', 'completed', 'cancelled']),
+  }),
+
+  adminVerifyPickup: z
+    .object({
+      orderId: z.string().min(1).optional(),
+      qrPayload: z.string().min(10).optional(),
+    })
+    .refine((d) => d.orderId || d.qrPayload, {
+      message: 'Provide orderId or qrPayload from scanned QR',
+    }),
+
+  counterOrder: z.object({
+    items: z.array(z.object({
+      menuItem: z.string().min(1),
+      quantity: z.coerce.number().int().min(1),
+    })).min(1),
+    pickupSlot: z.string().min(1),
+    notes: z.string().max(300).optional().default(''),
+    customerName: z.string().max(100).optional().default(''),
+  }),
+
   userRole: z.object({
     role: z.enum(['student', 'staff', 'admin']),
   }),

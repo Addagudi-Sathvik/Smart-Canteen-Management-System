@@ -19,9 +19,11 @@ const OrderStatusBadge = ({
   const theme = getStatusTheme(status);
   const text = label ?? getStatusLabel(status);
 
+  const pulseReady = status === 'ready' ? 'ring-2 ring-emerald-400/60 animate-pulse' : '';
+
   return (
     <span
-      className={`inline-flex items-center gap-1.5 font-semibold capitalize whitespace-nowrap ${theme.badge} ${sizeClasses[size]} ${className}`}
+      className={`inline-flex items-center gap-1.5 font-semibold capitalize whitespace-nowrap ${theme.badge} ${sizeClasses[size]} ${pulseReady} ${className}`}
     >
       {showDot && (
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${theme.dot}`} aria-hidden />

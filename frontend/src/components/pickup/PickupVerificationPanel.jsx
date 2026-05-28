@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { ordersAPI } from '../../utils/api';
+import { ordersAPI, adminAPI } from '../../utils/api';
 import { updateOrderFromSocket } from '../../store/slices/orderSlice';
 import { PICKUP_SUCCESS_MESSAGE } from '../../utils/orderStatus';
 import OrderStatusBadge from '../orders/OrderStatusBadge';
@@ -23,6 +23,8 @@ import {
 
 const PickupVerificationPanel = () => {
   const dispatch = useDispatch();
+  const { user } = useSelector((state) => state.auth);
+  const isAdmin = user?.role === 'admin';
   const [orderIdInput, setOrderIdInput] = useState('');
   const [qrPaste, setQrPaste] = useState('');
   const [preview, setPreview] = useState(null);
@@ -72,7 +74,9 @@ const PickupVerificationPanel = () => {
       setVerifying(true);
       setCameraActive(false);
       try {
-        const { data } = await ordersAPI.verifyQr({ qrPayload: raw });
+        const { data } = isAdmin
+          ? await adminAPI.verifyPickup({ qrPayload: raw })
+          : await ordersAPI.verifyQr({ qrPayload: raw });
         applyVerifiedOrder(data.order, data.message || PICKUP_SUCCESS_MESSAGE);
       } catch (err) {
         const msg = err.response?.data?.message || 'Verification failed';
@@ -85,7 +89,7 @@ const PickupVerificationPanel = () => {
         setVerifying(false);
       }
     },
-    [applyVerifiedOrder, dispatch]
+    [applyVerifiedOrder, dispatch, isAdmin]
   );
 
   const handleVerifyScanned = async (e) => {
@@ -114,9 +118,11 @@ const PickupVerificationPanel = () => {
 
     setVerifying(true);
     try {
-      const { data } = await ordersAPI.verifyPickup(preview._id, {
-        qrToken: preview.qrToken,
-      });
+      const { data } = isAdmin
+        ? await adminAPI.verifyPickup({ orderId: preview.orderId })
+        : await ordersAPI.verifyPickup(preview._id, {
+            qrToken: preview.qrToken,
+          });
       applyVerifiedOrder(data.order, data.message || PICKUP_SUCCESS_MESSAGE);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to verify pickup');

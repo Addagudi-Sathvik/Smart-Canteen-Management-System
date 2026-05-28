@@ -27,9 +27,11 @@ export const staffNav = [
 ];
 
 export const adminNav = [
-  { to: '/admin', label: 'Dashboard', icon: BarChart3 },
+  { to: '/admin', label: 'Hub', icon: BarChart3 },
+  { to: '/admin/live-orders', label: 'Live Queue', icon: ClipboardList },
+  { to: '/admin/counter', label: 'Counter', icon: ShoppingBag },
   { to: '/admin/menu', label: 'Menu', icon: UtensilsCrossed },
-  { to: '/admin/orders', label: 'Orders', icon: ShoppingBag },
+  { to: '/admin/orders', label: 'Logs', icon: History },
   { to: '/admin/pickup', label: 'Pickup QR', icon: QrCode },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/system', label: 'System', icon: Settings },

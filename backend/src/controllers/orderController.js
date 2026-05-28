@@ -6,9 +6,11 @@ const {
   buildQrPayloadString,
   parseQrPayload,
 } = require('../utils/qrService');
-
-let io;
-const setSocketIO = (socketIO) => { io = socketIO; };
+const {
+  setSocketIO,
+  emitNewOrderPlaced,
+  emitOrderStatusUpdate,
+} = require('../utils/socketEvents');
 
 const STATUS_PIPELINE = ['pending', 'confirmed', 'preparing', 'ready', 'completed'];
 
@@ -16,21 +18,6 @@ const isForwardStatus = (from, to) => {
   const fromIdx = STATUS_PIPELINE.indexOf(from);
   const toIdx = STATUS_PIPELINE.indexOf(to);
   return fromIdx !== -1 && toIdx !== -1 && toIdx > fromIdx;
-};
-
-const emitOrderStatusUpdate = (order, notificationMessage) => {
-  if (!io) return;
-  const payload = order.toObject ? order.toObject() : order;
-  io.emit('order:statusUpdate', payload);
-  io.to('staff').emit('order:statusUpdate', payload);
-  io.to('role:staff').emit('order:statusUpdate', payload);
-  io.to('role:admin').emit('order:statusUpdate', payload);
-  io.emit('notification', {
-    type: 'status_update',
-    message: notificationMessage || `Order ${order.orderId} is now ${order.status}`,
-    orderId: order.orderId,
-    status: order.status,
-  });
 };
 
 /** Never expose raw qrToken to students. */
@@ -121,19 +108,6 @@ const createOrder = async (req, res) => {
     });
 
     await order.populate('userId', 'name email avatar');
-
-    if (io) {
-      const payload = order.toObject();
-      io.emit('order:new', payload);
-      io.to('staff').emit('order:new', payload);
-      io.to('role:staff').emit('order:new', payload);
-      io.to('role:admin').emit('order:new', payload);
-      io.emit('notification', {
-        type: 'new_order',
-        message: `New order ${order.orderId} received`,
-        orderId: order.orderId,
-      });
-    }
 
     res.status(201).json({ order, message: 'Order created. Proceed to payment.' });
   } catch (error) {

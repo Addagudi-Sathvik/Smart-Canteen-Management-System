@@ -8,6 +8,8 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
+const { emitNewOrderPlaced } = require('../utils/socketEvents');
+
 let io;
 const setSocketIO = (socketIO) => { io = socketIO; };
 
@@ -99,15 +101,7 @@ const verifyPayment = async (req, res) => {
     const orderResponse = order.toObject();
     orderResponse.qrPayload = qrPayload;
 
-    // Emit real-time event to staff
-    if (io) {
-      io.emit('order:new', order.toObject());
-      io.emit('notification', {
-        type:    'new_order',
-        message: `New order ${order.orderId} received`,
-        orderId: order.orderId,
-      });
-    }
+    emitNewOrderPlaced(order);
 
     res.json({ message: 'Payment verified successfully.', order: orderResponse });
   } catch (error) {

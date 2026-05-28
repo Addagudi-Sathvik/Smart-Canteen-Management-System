@@ -6,6 +6,7 @@ import Modal from '../../components/ui/Modal';
 import PageHeader from '../../components/ui/PageHeader';
 import Input from '../../components/ui/Input';
 import OrderStatusBadge from '../../components/orders/OrderStatusBadge';
+import AdminOrderActionButton from '../../components/admin/AdminOrderActionButton';
 
 const AllOrders = () => {
   const [orders, setOrders] = useState([]);
@@ -75,6 +76,7 @@ const AllOrders = () => {
                 <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Total</th>
                 <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Date</th>
+                <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">Action</th>
                 <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">View</th>
               </tr>
             </thead>
@@ -96,8 +98,19 @@ const AllOrders = () => {
                     <OrderStatusBadge status={order.status} />
                   </td>
                   <td className="px-4 py-3 text-right text-sm text-gray-500">{formatDate(order.createdAt)}</td>
+                  <td className="px-4 py-3 text-center min-w-[140px]">
+                    <AdminOrderActionButton
+                      order={order}
+                      size="sm"
+                      onUpdated={(updated) => {
+                        setOrders((prev) =>
+                          prev.map((o) => (o._id === updated._id ? updated : o))
+                        );
+                      }}
+                    />
+                  </td>
                   <td className="px-4 py-3 text-center">
-                    <button onClick={() => setSelectedOrder(order)} className="btn-ghost p-1.5">
+                    <button type="button" onClick={() => setSelectedOrder(order)} className="btn-ghost p-1.5">
                       <Eye className="w-4 h-4" />
                     </button>
                   </td>

@@ -9,6 +9,7 @@ const env = require('./config/env');
 const connectDB = require('./config/db');
 const { initializeSocket } = require('./socket');
 const { setSocketIO } = require('./controllers/orderController');
+const { setSocketIO: setSharedSocketIO } = require('./utils/socketEvents');
 const errorHandler = require('./middleware/errorHandler');
 
 const allowedOrigin = process.env.FRONTEND_URL || "http://localhost:5173";
@@ -78,6 +79,7 @@ app.use(errorHandler);
 // Initialize Socket.io
 const io = initializeSocket(server);
 setSocketIO(io);
+setSharedSocketIO(io);
 
 // Connect to MongoDB and start server
 connectDB()

@@ -35,6 +35,13 @@ const initializeSocket = (httpServer) => {
       socket.join('staff');
     });
 
+    // User-specific room for targeted pickup alerts
+    socket.on('join:user', (userId) => {
+      if (userId) {
+        socket.join(`user:${userId}`);
+      }
+    });
+
     // Handle disconnection
     socket.on('disconnect', (reason) => {
       console.log(`⚡ Client disconnected: ${socket.id} (${reason})`);

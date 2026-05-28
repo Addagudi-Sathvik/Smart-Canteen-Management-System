@@ -82,6 +82,11 @@ export const usersAPI = {
 export const adminAPI = {
   getDashboard: () => api.get('/admin/dashboard'),
   getAllOrders: (params) => api.get('/admin/orders', { params }),
+  getActiveOrders: () => api.get('/admin/orders/active'),
+  updateOrderStatus: (orderId, status) =>
+    api.patch(`/admin/orders/${orderId}/status`, { status }),
+  verifyPickup: (data) => api.post('/admin/verify-pickup', data),
+  createCounterOrder: (data) => api.post('/admin/orders/counter', data),
   getSystemState: () => api.get('/admin/system'),
   updateSystemState: (data) => api.patch('/admin/system', data),
 };
