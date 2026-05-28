@@ -7,16 +7,20 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'https://smart-canteen-management-system.onrender.com',
         changeOrigin: true,
+        secure: true,
       },
       '/socket.io': {
-        target: 'http://localhost:5000',
+        target: 'https://smart-canteen-management-system.onrender.com',
+        changeOrigin: true,
+        secure: true,
         ws: true,
       },
       '/uploads': {
-        target: 'http://localhost:5000',
+        target: 'https://smart-canteen-management-system.onrender.com',
         changeOrigin: true,
+        secure: true,
       },
     },
   },

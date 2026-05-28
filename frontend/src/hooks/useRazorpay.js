@@ -1,82 +1,89 @@
-import { useState } from 'react';
-import axios from 'axios';
+import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { paymentsAPI } from '../utils/api';
 
 const useRazorpay = () => {
   const [processing, setProcessing] = useState(false);
 
-  const initiatePayment = async ({ orderId, amount, userName, userEmail, userPhone, onSuccess, onFailure }) => {
-    setProcessing(true);
+  const recordPaymentFailed = useCallback(async (orderId) => {
     try {
-      // Step 1 — Create Razorpay order from backend
-      const token = localStorage.getItem('token');
-      const { data } = await axios.post(
-        '/api/payments/create-order',
-        { orderId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      // Step 2 — Open Razorpay popup
-      const options = {
-        key:       data.keyId,
-        amount:    data.amount,
-        currency:  data.currency,
-        name:      'Smart Canteen',
-        description: 'Food Order Payment',
-        order_id:  data.razorpayOrderId,
-        prefill: {
-          name:  userName,
-          email: userEmail,
-          contact: userPhone || '',
-        },
-        theme: { color: '#d97706' }, // your brand amber color
-        handler: async (response) => {
-          // Step 3 — Verify payment on backend
-          try {
-            await axios.post(
-              '/api/payments/verify',
-              {
-                razorpay_order_id:   response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature:  response.razorpay_signature,
-                orderId,
-              },
-              { headers: { Authorization: `Bearer ${token}` } }
-            );
-            toast.success('Payment successful!');
-            onSuccess?.();
-          } catch {
-            toast.error('Payment verification failed.');
-            onFailure?.();
-          }
-        },
-        modal: {
-          ondismiss: () => {
-            toast.error('Payment cancelled.');
-            setProcessing(false);
-            onFailure?.();
-          },
-        },
-      };
-
-      const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', async () => {
-        await axios.post(
-          '/api/payments/failed',
-          { orderId },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        toast.error('Payment failed. Please try again.');
-        onFailure?.();
-      });
-
-      rzp.open();
-    } catch (error) {
-      toast.error('Could not initiate payment.');
-    } finally {
-      setProcessing(false);
+      await paymentsAPI.failed(orderId);
+    } catch {
+      /* best-effort cleanup */
     }
-  };
+  }, []);
+
+  const initiatePayment = useCallback(
+    async ({ orderId, userName, userEmail, userPhone, onSuccess, onFailure }) => {
+      if (!window.Razorpay) {
+        toast.error('Payment gateway failed to load. Please refresh the page.');
+        onFailure?.();
+        return;
+      }
+
+      setProcessing(true);
+      try {
+        const { data } = await paymentsAPI.createOrder(orderId);
+
+        const options = {
+          key: data.keyId,
+          amount: data.amount,
+          currency: data.currency,
+          name: 'CanteenHub',
+          description: 'Food Order Payment',
+          order_id: data.razorpayOrderId,
+          prefill: {
+            name: userName,
+            email: userEmail,
+            contact: userPhone || '',
+          },
+          theme: { color: '#d97706' },
+          handler: async (response) => {
+            try {
+              await paymentsAPI.verify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                orderId,
+              });
+              toast.success('Payment successful!');
+              setProcessing(false);
+              onSuccess?.();
+            } catch {
+              toast.error('Payment verification failed.');
+              setProcessing(false);
+              onFailure?.();
+            }
+          },
+          modal: {
+            ondismiss: async () => {
+              toast.error('Payment cancelled.');
+              await recordPaymentFailed(orderId);
+              setProcessing(false);
+              onFailure?.();
+            },
+          },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', async () => {
+          await recordPaymentFailed(orderId);
+          toast.error('Payment failed. Please try again.');
+          setProcessing(false);
+          onFailure?.();
+        });
+
+        rzp.open();
+      } catch (error) {
+        const message =
+          error.response?.data?.message || 'Could not initiate payment.';
+        toast.error(message);
+        setProcessing(false);
+        onFailure?.();
+      }
+    },
+    [recordPaymentFailed]
+  );
 
   return { initiatePayment, processing };
 };

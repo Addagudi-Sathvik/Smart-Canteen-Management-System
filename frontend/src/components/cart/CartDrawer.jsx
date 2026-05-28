@@ -2,253 +2,385 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { useState, useCallback } from 'react';
 import {
   closeCart,
   removeFromCart,
   updateQuantity,
   clearCart,
   selectCartTotal,
-  selectCartCount,
 } from '../../store/slices/cartSlice';
 import { createOrder } from '../../store/slices/orderSlice';
-import { motionSpring } from '../../config/navigation';
-import Button from '../ui/Button';
-import EmptyState from '../ui/EmptyState';
-import { ShoppingCart, Trash2, Plus, Minus, X, ArrowRight, Clock } from 'lucide-react';
-import { useState } from 'react';
 import useRazorpay from '../../hooks/useRazorpay';
+import {
+  generatePickupSlots,
+  getDefaultPickupSlot,
+  isValidPickupSlot,
+  slotToTimeInput,
+  timeInputToPickupSlot,
+} from '../../utils/pickupTime';
+import { X, ShoppingBag, Trash2, Plus, Minus, Clock, ArrowRight } from 'lucide-react';
 
-// Pickup slots available every 15 minutes from 12:00 PM to 2:00 PM
-const PICKUP_SLOTS = [
-  '12:00 PM',
-  '12:15 PM',
-  '12:30 PM',
-  '12:45 PM',
-  '1:00 PM',
-  '1:15 PM',
-  '1:30 PM',
-  '1:45 PM',
-  '2:00 PM',
-];
+const PICKUP_SLOTS = generatePickupSlots();
+const DEFAULT_SLOT = getDefaultPickupSlot(PICKUP_SLOTS);
+
+const getErrorMessage = (err) =>
+  typeof err === 'string' ? err : err?.message || 'Something went wrong. Please try again.';
 
 const CartDrawer = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { items, isOpen } = useSelector((state) => state.cart);
-  const total = useSelector(selectCartTotal);
-  const count = useSelector(selectCartCount);
-  const { loading } = useSelector((state) => state.orders);
-  const user = useSelector((state) => state.auth.user);
-  const [ordering, setOrdering] = useState(false);
 
-  // Pickup slot state — default to first slot
-  const [selectedSlot, setSelectedSlot] = useState(PICKUP_SLOTS[0]);
+  const { isOpen, items } = useSelector((state) => state.cart);
+  const total = useSelector(selectCartTotal);
+  const { loading } = useSelector((state) => state.orders);
+  const { user } = useSelector((state) => state.auth);
+
+  const [pickupSlot, setPickupSlot] = useState(DEFAULT_SLOT);
+  const [pickupMode, setPickupMode] = useState('quick');
+  const [customTimeValue, setCustomTimeValue] = useState(() => slotToTimeInput(DEFAULT_SLOT));
+  const [notes, setNotes] = useState('');
+  const [placing, setPlacing] = useState(false);
 
   const { initiatePayment, processing } = useRazorpay();
 
-  const handlePlaceOrder = async () => {
-    if (items.length === 0) return;
+  const isBusy = loading || processing || placing;
+  const canPlaceOrder = pickupSlot?.trim() && isValidPickupSlot(pickupSlot);
 
-    // Guard — slot must be selected (it always will be since we default, but safety check)
-    if (!selectedSlot) {
+  const selectQuickSlot = useCallback((slot) => {
+    setPickupMode('quick');
+    setPickupSlot(slot);
+    setCustomTimeValue(slotToTimeInput(slot));
+  }, []);
+
+  const switchToCustom = useCallback(() => {
+    setPickupMode('custom');
+    setCustomTimeValue(slotToTimeInput(pickupSlot || DEFAULT_SLOT));
+  }, [pickupSlot]);
+
+  const handleCustomTimeChange = useCallback((e) => {
+    const value = e.target.value;
+    setCustomTimeValue(value);
+    if (!value) return;
+
+    const slot = timeInputToPickupSlot(value);
+    if (isValidPickupSlot(slot)) {
+      setPickupSlot(slot);
+    } else {
+      toast.error('Pickup time must be between 9:00 AM and 5:00 PM.');
+    }
+  }, []);
+
+  const handleClose = useCallback(() => {
+    dispatch(closeCart());
+  }, [dispatch]);
+
+  const handleClearCart = useCallback(() => {
+    dispatch(clearCart());
+    toast.success('Cart cleared');
+  }, [dispatch]);
+
+  const handlePlaceOrder = async () => {
+    if (items.length === 0) {
+      toast.error('Your cart is empty!');
+      return;
+    }
+
+    const slot = pickupSlot?.trim();
+    if (!slot || !isValidPickupSlot(slot)) {
       toast.error('Please select a pickup time slot.');
       return;
     }
 
-    setOrdering(true);
+    setPlacing(true);
     try {
-      // Step 1 — Create the order in DB, include pickupSlot
-      const result = await dispatch(createOrder({
+      const orderData = {
         items: items.map((item) => ({
-          menuItem: item.menuItem,
-          name: item.name,
+          menuItem: item._id,
           quantity: item.quantity,
-          price: item.price,
         })),
-        pickupSlot: selectedSlot, // ✅ sent to backend
-      })).unwrap();
+        pickupSlot: slot,
+        notes: notes.trim(),
+        paymentMethod: 'online',
+      };
 
-      if (result.order) {
-        const orderId = result.order._id;
+      const result = await dispatch(createOrder(orderData)).unwrap();
+      const order = result?.order;
 
-        // Step 2 — Trigger Razorpay payment popup
-        await initiatePayment({
-          orderId,
-          amount:    result.order.totalAmount,
-          userName:  user?.name  || '',
-          userEmail: user?.email || '',
-          onSuccess: () => {
-            dispatch(clearCart());
-            dispatch(closeCart());
-            toast.success(`Order placed! Pickup at ${selectedSlot} 🎉`);
-            navigate('/orders/active');
-          },
-          onFailure: () => {
-            toast.error('Payment was not completed. Please try again.');
-          },
-        });
+      if (!order?._id) {
+        toast.error('Order created but payment could not start.');
+        return;
       }
-    } catch (error) {
-      toast.error(error || 'Failed to place order. Please try again.');
+
+      await initiatePayment({
+        orderId: order._id,
+        userName: user?.name || '',
+        userEmail: user?.email || '',
+        userPhone: user?.phone || '',
+        onSuccess: () => {
+          dispatch(clearCart());
+          dispatch(closeCart());
+          navigate('/orders/active');
+        },
+        onFailure: () => {
+          /* pending order cancelled via payments/failed on dismiss/fail */
+        },
+      });
+    } catch (err) {
+      toast.error(getErrorMessage(err));
     } finally {
-      setOrdering(false);
+      setPlacing(false);
     }
   };
+
+  const slotButtonClass = useCallback(
+    (slot) =>
+      `py-2 px-1 rounded-xl text-xs font-semibold border transition-all ${
+        pickupMode === 'quick' && pickupSlot === slot
+          ? 'bg-brand-600 text-white border-brand-600 shadow-soft scale-[1.02]'
+          : 'bg-white/80 dark:bg-espresso-800/80 text-espresso-700 dark:text-espresso-300 border-brand-200/60 dark:border-brand-800/40 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400'
+      }`,
+    [pickupMode, pickupSlot]
+  );
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
           <motion.div
-            className="fixed inset-0 z-50 bg-espresso-950/50 backdrop-blur-sm"
+            className="fixed inset-0 bg-espresso-950/60 backdrop-blur-sm z-40"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => dispatch(closeCart())}
+            onClick={handleClose}
           />
 
           <motion.div
-            className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md glass-strong border-l border-brand-200/40 dark:border-brand-800/30 flex flex-col safe-bottom"
+            className="fixed right-0 top-0 h-full w-full max-w-md glass-strong shadow-elevated z-50 flex flex-col border-l border-brand-200/40 dark:border-brand-800/30"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
-            transition={motionSpring}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-brand-200/40 dark:border-brand-800/30">
+            <div className="flex items-center justify-between p-4 border-b border-brand-200/40 dark:border-brand-800/30">
               <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center">
-                  <ShoppingCart className="w-5 h-5 text-brand-600" />
-                </div>
-                <h2 className="font-display font-bold text-lg">
+                <ShoppingBag className="w-5 h-5 text-brand-600 dark:text-brand-400" />
+                <h2 className="font-display text-lg font-semibold text-espresso-900 dark:text-espresso-50">
                   Your Cart
-                  {count > 0 && <span className="text-sm font-normal text-espresso-500 ml-1">({count})</span>}
                 </h2>
+                {items.length > 0 && (
+                  <span className="bg-brand-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    {items.length}
+                  </span>
+                )}
               </div>
               <button
                 type="button"
-                onClick={() => dispatch(closeCart())}
-                className="p-2.5 rounded-xl hover:bg-brand-50 dark:hover:bg-espresso-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                onClick={handleClose}
+                className="p-2 rounded-xl hover:bg-brand-50 dark:hover:bg-espresso-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                 aria-label="Close cart"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 text-espresso-500" />
               </button>
             </div>
 
-            <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 overflow-y-auto">
               {items.length === 0 ? (
-                <EmptyState
-                  icon={ShoppingCart}
-                  title="Your cart is empty"
-                  description="Add some delicious items from the menu!"
-                  actionLabel="Browse Menu"
-                  onAction={() => { dispatch(closeCart()); navigate('/menu'); }}
-                />
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-espresso-400 px-6">
+                  <ShoppingBag className="w-16 h-16 opacity-30" />
+                  <p className="text-lg font-medium text-espresso-600 dark:text-espresso-300">
+                    Your cart is empty
+                  </p>
+                  <p className="text-sm text-center">
+                    Add some delicious items from the menu!
+                  </p>
+                </div>
               ) : (
-                <>
-                  {/* Cart Items */}
-                  <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-                    <AnimatePresence>
-                      {items.map((item) => (
-                        <motion.div
-                          key={item.menuItem}
-                          layout
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: 40 }}
-                          className="flex items-center gap-3 p-4 bg-brand-50/50 dark:bg-espresso-800/50 rounded-2xl border border-brand-100/50 dark:border-espresso-700/50"
+                <div className="p-4 space-y-4">
+                  {items.map((item) => (
+                    <motion.div
+                      key={item._id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-3 p-3 rounded-2xl bg-brand-50/50 dark:bg-espresso-800/60 border border-brand-100/60 dark:border-espresso-700/50"
+                    >
+                      {item.image && (
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="w-14 h-14 rounded-xl object-cover flex-shrink-0"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-espresso-900 dark:text-espresso-50 truncate">
+                          {item.name}
+                        </p>
+                        <p className="text-sm font-bold text-brand-600 dark:text-brand-400">
+                          ₹{(item.price * item.quantity).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => dispatch(updateQuantity({ id: item._id, delta: -1 }))}
+                          className="w-8 h-8 rounded-full bg-white dark:bg-espresso-700 flex items-center justify-center hover:bg-brand-500 hover:text-white transition-colors border border-brand-200/50 dark:border-espresso-600"
                         >
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate">{item.name}</p>
-                            <p className="text-xs text-espresso-500">₹{item.price} each</p>
-                          </div>
-                          <div className="flex items-center gap-1 bg-white dark:bg-espresso-900 rounded-xl p-0.5">
-                            <button
-                              type="button"
-                              onClick={() => dispatch(updateQuantity({ menuItem: item.menuItem, quantity: item.quantity - 1 }))}
-                              className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg hover:bg-espresso-100 dark:hover:bg-espresso-800"
-                              aria-label="Decrease quantity"
-                            >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <span className="w-7 text-center text-sm font-bold">{item.quantity}</span>
-                            <button
-                              type="button"
-                              onClick={() => dispatch(updateQuantity({ menuItem: item.menuItem, quantity: item.quantity + 1 }))}
-                              className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg hover:bg-espresso-100 dark:hover:bg-espresso-800"
-                              aria-label="Increase quantity"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          <p className="text-sm font-bold w-14 text-right">₹{item.price * item.quantity}</p>
-                          <button
-                            type="button"
-                            onClick={() => dispatch(removeFromCart(item.menuItem))}
-                            className="p-2 text-tomato-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center"
-                            aria-label="Remove item"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-                  </div>
-
-                  {/* Checkout Panel */}
-                  <div className="border-t border-brand-200/40 dark:border-brand-800/30 px-5 py-4 space-y-4 bg-white/50 dark:bg-espresso-950/50">
-
-                    {/* ✅ Pickup Slot Picker */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Clock className="w-4 h-4 text-brand-600" />
-                        <span className="text-sm font-semibold text-espresso-700 dark:text-espresso-300">
-                          Pick up time
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-6 text-center font-semibold text-sm text-espresso-900 dark:text-espresso-50">
+                          {item.quantity}
                         </span>
-                        <span className="ml-auto text-xs font-bold text-brand-600 bg-brand-50 dark:bg-brand-900/40 px-2 py-0.5 rounded-full">
-                          {selectedSlot}
+                        <button
+                          type="button"
+                          onClick={() => dispatch(updateQuantity({ id: item._id, delta: 1 }))}
+                          className="w-8 h-8 rounded-full bg-white dark:bg-espresso-700 flex items-center justify-center hover:bg-brand-500 hover:text-white transition-colors border border-brand-200/50 dark:border-espresso-600"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dispatch(removeFromCart(item._id))}
+                          className="w-8 h-8 rounded-full bg-tomato-500/10 flex items-center justify-center hover:bg-tomato-500 hover:text-white text-tomato-600 transition-colors ml-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+
+                  <div className="mt-2 pt-2 border-t border-brand-200/40 dark:border-brand-800/30">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Clock className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                      <h3 className="font-semibold text-espresso-900 dark:text-espresso-50 text-sm">
+                        Pick up time
+                      </h3>
+                      {pickupSlot && (
+                        <span className="ml-auto text-xs font-bold text-brand-600 dark:text-brand-400">
+                          {pickupSlot}
                         </span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {PICKUP_SLOTS.map((slot) => (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => setSelectedSlot(slot)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all min-h-[36px] ${
-                              selectedSlot === slot
-                                ? 'bg-brand-500 border-brand-500 text-white shadow-sm'
-                                : 'bg-white dark:bg-espresso-900 border-espresso-200 dark:border-espresso-700 text-espresso-600 dark:text-espresso-400 hover:border-brand-400 hover:text-brand-600'
-                            }`}
-                          >
-                            {slot}
-                          </button>
-                        ))}
-                      </div>
+                      )}
                     </div>
 
-                    {/* Subtotal + Action Buttons */}
-                    <div className="flex justify-between items-center">
-                      <span className="text-espresso-500 font-medium">Subtotal</span>
-                      <span className="text-xl font-display font-bold">₹{total}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="secondary" className="flex-1" onClick={() => dispatch(clearCart())}>
-                        Clear
-                      </Button>
-                      <Button
-                        className="flex-1"
-                        onClick={handlePlaceOrder}
-                        disabled={loading || ordering || processing || items.length === 0}
-                        loading={ordering || processing}
+                    <div className="flex gap-2 mb-3">
+                      <button
+                        type="button"
+                        onClick={() => setPickupMode('quick')}
+                        className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
+                          pickupMode === 'quick'
+                            ? 'bg-brand-600 text-white'
+                            : 'bg-espresso-100 dark:bg-espresso-800 text-espresso-600 dark:text-espresso-400'
+                        }`}
                       >
-                        Place Order <ArrowRight className="w-4 h-4" />
-                      </Button>
+                        Quick slots
+                      </button>
+                      <button
+                        type="button"
+                        onClick={switchToCustom}
+                        className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
+                          pickupMode === 'custom'
+                            ? 'bg-brand-600 text-white'
+                            : 'bg-espresso-100 dark:bg-espresso-800 text-espresso-600 dark:text-espresso-400'
+                        }`}
+                      >
+                        Custom time
+                      </button>
                     </div>
+
+                    {pickupMode === 'quick' ? (
+                      <div className="max-h-44 overflow-y-auto pr-1">
+                        <div className="grid grid-cols-3 gap-2">
+                          {PICKUP_SLOTS.map((slot) => (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => selectQuickSlot(slot)}
+                              className={slotButtonClass(slot)}
+                            >
+                              {slot}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <label className="block text-xs font-medium text-espresso-500 dark:text-espresso-400">
+                          Choose time (9:00 AM – 5:00 PM)
+                        </label>
+                        <input
+                          type="time"
+                          min="09:00"
+                          max="17:00"
+                          step="900"
+                          value={customTimeValue}
+                          onChange={handleCustomTimeChange}
+                          className="w-full rounded-xl border border-brand-200/60 dark:border-brand-800/40 bg-white dark:bg-espresso-800 text-espresso-900 dark:text-espresso-50 px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand-400"
+                        />
+                        {pickupSlot && isValidPickupSlot(pickupSlot) && (
+                          <p className="text-xs text-brand-600 dark:text-brand-400 font-medium">
+                            Selected: {pickupSlot}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </>
+
+                  <div>
+                    <label className="block text-sm font-medium text-espresso-700 dark:text-espresso-300 mb-1">
+                      Special instructions (optional)
+                    </label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="E.g. no onions, extra spicy..."
+                      maxLength={300}
+                      rows={2}
+                      className="w-full rounded-xl border border-brand-200/60 dark:border-brand-800/40 bg-white dark:bg-espresso-800 text-sm text-espresso-900 dark:text-espresso-50 px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-brand-400"
+                    />
+                  </div>
+                </div>
               )}
             </div>
+
+            {items.length > 0 && (
+              <div className="border-t border-brand-200/40 dark:border-brand-800/30 p-4 space-y-3 safe-bottom">
+                <div className="flex justify-between items-center">
+                  <span className="text-espresso-500 dark:text-espresso-400 text-sm">Subtotal</span>
+                  <span className="font-display font-bold text-espresso-900 dark:text-espresso-50">
+                    ₹{total.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleClearCart}
+                    disabled={isBusy}
+                    className="px-4 py-3 rounded-xl font-semibold text-sm border border-brand-200/60 dark:border-brand-800/40 text-espresso-600 dark:text-espresso-400 hover:bg-brand-50 dark:hover:bg-espresso-800 transition-all disabled:opacity-50"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePlaceOrder}
+                    disabled={isBusy || !canPlaceOrder}
+                    className="flex-1 btn-primary py-3 text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isBusy ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        {processing ? 'Opening payment…' : 'Placing order…'}
+                      </>
+                    ) : (
+                      <>
+                        Place Order
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </motion.div>
         </>
       )}

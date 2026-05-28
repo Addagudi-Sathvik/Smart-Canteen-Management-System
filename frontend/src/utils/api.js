@@ -47,6 +47,13 @@ export const menuAPI = {
   toggleAvailability: (id) => api.patch(`/menu/${id}/toggle`),
 };
 
+// Payments API
+export const paymentsAPI = {
+  createOrder: (orderId) => api.post('/payments/create-order', { orderId }),
+  verify: (data) => api.post('/payments/verify', data),
+  failed: (orderId) => api.post('/payments/failed', { orderId }),
+};
+
 // Orders API
 export const ordersAPI = {
   create: (data) => api.post('/orders', data),
