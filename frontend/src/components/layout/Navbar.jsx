@@ -6,6 +6,7 @@ import { logout } from '../../store/slices/authSlice';
 import { useTheme } from '../../hooks/useTheme';
 import { selectCartCount, openCart } from '../../store/slices/cartSlice';
 import { getNavForRole } from '../../config/navigation';
+import { useSidebar } from '../../contexts/SidebarContext';
 import {
   LogOut,
   User,
@@ -17,10 +18,11 @@ import {
   Menu,
 } from 'lucide-react';
 
-const Navbar = ({ onMenuClick }) => {
+const Navbar = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
+  const { open: openSidebar } = useSidebar();
   const { user, isAuthenticated } = useSelector((state) => state.auth);
   const cartCount = useSelector(selectCartCount);
   const { theme, toggleTheme } = useTheme();
@@ -51,7 +53,7 @@ const Navbar = ({ onMenuClick }) => {
           {(user?.role === 'staff' || user?.role === 'admin') && (
             <button
               type="button"
-              onClick={onMenuClick}
+              onClick={openSidebar}
               className="lg:hidden p-2.5 rounded-xl hover:bg-brand-50 dark:hover:bg-espresso-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label="Open menu"
             >
