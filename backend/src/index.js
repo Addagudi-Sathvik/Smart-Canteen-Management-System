@@ -3,6 +3,7 @@ const http = require('http');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
+const fs = require('fs'); // ✅ Added fs module to check folder existence
 const env = require('./config/env');
 
 const connectDB = require('./config/db');
@@ -18,13 +19,13 @@ const menuRoutes = require('./routes/menu');
 const orderRoutes = require('./routes/orders');
 const userRoutes = require('./routes/users');
 const adminRoutes = require('./routes/admin');
-const paymentRoutes = require('./routes/paymentRoutes'); // ✅ MOVED: import up here with other routes
+const paymentRoutes = require('./routes/paymentRoutes');
 
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
 
-// Middleware  ← paymentRoutes must come AFTER these
+// Middleware
 app.use(cors({
   origin: allowedOrigin,
   credentials: true,
@@ -39,8 +40,15 @@ if (env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// Serve uploaded files
-app.use('/uploads', express.static(path.resolve(__dirname, '..', env.UPLOAD_DIR)));
+// 🛠️ BULLETPROOF STATIC UPLOADS ROUTING FOR LOCAL & RENDER DEPLOYMENTS
+let uploadsPath = path.resolve(__dirname, '..', env.UPLOAD_DIR || 'uploads');
+
+// Fallback: If going up a level fails to find the directory, search the current directory level
+if (!fs.existsSync(uploadsPath)) {
+  uploadsPath = path.resolve(__dirname, env.UPLOAD_DIR || 'uploads');
+}
+
+app.use('/uploads', express.static(uploadsPath));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -57,7 +65,7 @@ app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/payments', paymentRoutes); // ✅ MOVED: now after middleware, with other routes
+app.use('/api/payments', paymentRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -80,6 +88,7 @@ connectDB()
       console.log(`📡 Port: ${port}`);
       console.log(`🌍 Environment: ${env.NODE_ENV}`);
       console.log(`🔗 Frontend URL: ${allowedOrigin}`);
+      console.log(`📂 Resolved Uploads Path: ${uploadsPath}`); // Helpful logging during startup
       console.log(`📅 ${new Date().toISOString()}\n`);
     });
   })
