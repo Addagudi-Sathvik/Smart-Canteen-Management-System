@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
-import axios from 'axios';
+import { Link } from 'react-router-dom';
 import { fetchAllOrders, updateOrderStatus } from '../../store/slices/orderSlice';
+import { ordersAPI } from '../../utils/api';
 import toast from 'react-hot-toast';
 import PageHeader from '../../components/ui/PageHeader';
 import StatCard from '../../components/ui/StatCard';
@@ -52,7 +53,7 @@ const OrderCard = ({ order, column, onStatusUpdate, onVerifyPickup }) => {
   const handleVerify = async () => {
     setVerifying(true);
     try {
-      await onVerifyPickup(order._id, order.orderId);
+      await onVerifyPickup(order);
     } finally {
       setVerifying(false);
     }
@@ -175,18 +176,17 @@ const StaffDashboard = () => {
   };
 
   // ✅ Verify pickup — calls the new backend route, then refreshes orders
-  const handleVerifyPickup = async (orderId, orderDisplayId) => {
+  const handleVerifyPickup = async (order) => {
+    if (!order.qrToken) {
+      toast.error('No QR token on this order. Use Pickup QR page to scan.');
+      return;
+    }
     try {
-      const token = localStorage.getItem('token');
-      await axios.post(
-        `/api/orders/${orderId}/verify-pickup`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await ordersAPI.verifyPickup(order._id, { qrToken: order.qrToken });
       toast.success(
         <span className="flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-accent-500" />
-          Order <strong>{orderDisplayId}</strong> collected ✓
+          Order <strong>{order.orderId}</strong> collected ✓
         </span>
       );
       // Refresh the queue
@@ -211,7 +211,13 @@ const StaffDashboard = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Staff Queue" subtitle="Manage incoming orders in real-time" />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <PageHeader title="Staff Queue" subtitle="Manage incoming orders in real-time" />
+        <Link to="/staff/pickup" className="btn-secondary text-sm self-start sm:self-center shrink-0">
+          <QrCode className="w-4 h-4 inline mr-1" />
+          Scan pickup QR
+        </Link>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

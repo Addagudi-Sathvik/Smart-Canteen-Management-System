@@ -59,6 +59,29 @@ const schemas = {
     status: z.enum(['pending', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled']),
   }),
 
+  verifyQr: z
+    .object({
+      qrPayload: z.string().min(10).optional(),
+      orderId:   z.string().min(1).optional(),
+      token:     z.string().min(32).optional(),
+    })
+    .refine((d) => d.qrPayload || (d.orderId && d.token), {
+      message: 'Provide qrPayload or both orderId and token',
+    }),
+
+  pickupLookup: z
+    .object({
+      orderId: z.string().min(1).optional(),
+      token:   z.string().min(32).optional(),
+    })
+    .refine((d) => d.orderId || d.token, {
+      message: 'Provide orderId or token',
+    }),
+
+  verifyPickup: z.object({
+    qrToken: z.string().min(32, 'Verification token is required'),
+  }),
+
   userRole: z.object({
     role: z.enum(['student', 'staff', 'admin']),
   }),

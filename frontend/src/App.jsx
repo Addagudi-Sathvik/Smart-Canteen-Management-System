@@ -22,6 +22,8 @@ const MenuManagement = lazy(() => import('./pages/admin/MenuManagement'));
 const UserManagement = lazy(() => import('./pages/admin/UserManagement'));
 const SystemControls = lazy(() => import('./pages/admin/SystemControls'));
 const AllOrders = lazy(() => import('./pages/admin/AllOrders'));
+const PickupVerification = lazy(() => import('./pages/admin/PickupVerification'));
+const StaffPickupVerification = lazy(() => import('./pages/staff/StaffPickupVerification'));
 
 function App() {
   const dispatch = useDispatch();
@@ -65,6 +67,7 @@ function App() {
             {/* Staff Routes */}
             <Route path="/staff" element={<StaffDashboard />} />
             <Route path="/staff/inventory" element={<StaffInventory />} />
+            <Route path="/staff/pickup" element={<StaffPickupVerification />} />
 
             {/* Admin Routes */}
             <Route path="/admin" element={<AdminDashboard />} />
@@ -72,6 +75,7 @@ function App() {
             <Route path="/admin/users" element={<UserManagement />} />
             <Route path="/admin/system" element={<SystemControls />} />
             <Route path="/admin/orders" element={<AllOrders />} />
+            <Route path="/admin/pickup" element={<PickupVerification />} />
           </Route>
         </Route>
 

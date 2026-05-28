@@ -64,6 +64,10 @@ export const ordersAPI = {
   updateStatus: (id, status) => api.patch(`/orders/${id}/status`, { status }),
   reorder: (id) => api.post(`/orders/${id}/reorder`),
   cancel: (id) => api.patch(`/orders/${id}/cancel`),
+  getQr: (id) => api.get(`/orders/${id}/qr`),
+  pickupLookup: (data) => api.post('/orders/pickup-lookup', data),
+  verifyQr: (data) => api.post('/orders/verify-qr', data),
+  verifyPickup: (id, data) => api.post(`/orders/${id}/verify-pickup`, data),
 };
 
 // Users API (Admin)

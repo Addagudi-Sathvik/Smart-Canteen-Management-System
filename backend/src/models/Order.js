@@ -68,6 +68,24 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  qrToken: {
+    type: String,
+    default: null,
+    index: true,
+    sparse: true,
+  },
+  qrUsed: {
+    type: Boolean,
+    default: false,
+  },
+  qrGeneratedAt: {
+    type: Date,
+    default: null,
+  },
+  pickupVerifiedAt: {
+    type: Date,
+    default: null,
+  },
   notes: {
     type: String,
     trim: true,
@@ -88,7 +106,8 @@ const orderSchema = new mongoose.Schema({
 
 orderSchema.index({ userId: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
-orderSchema.index({ pickupSlot: 1, status: 1 }); // new index for slot grouping queries
+orderSchema.index({ pickupSlot: 1, status: 1 });
+orderSchema.index({ orderId: 1, qrToken: 1 });
 
 orderSchema.statics.generateOrderId = async function () {
   const count = await this.countDocuments();

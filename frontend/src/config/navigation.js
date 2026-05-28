@@ -9,6 +9,7 @@ import {
   Settings,
   ShoppingBag,
   BarChart3,
+  QrCode,
 } from 'lucide-react';
 
 export const studentNav = [
@@ -20,6 +21,7 @@ export const studentNav = [
 
 export const staffNav = [
   { to: '/staff', label: 'Queue', icon: ClipboardList },
+  { to: '/staff/pickup', label: 'Pickup QR', icon: QrCode },
   { to: '/staff/inventory', label: 'Inventory', icon: Package },
 ];
 
@@ -27,6 +29,7 @@ export const adminNav = [
   { to: '/admin', label: 'Dashboard', icon: BarChart3 },
   { to: '/admin/menu', label: 'Menu', icon: UtensilsCrossed },
   { to: '/admin/orders', label: 'Orders', icon: ShoppingBag },
+  { to: '/admin/pickup', label: 'Pickup QR', icon: QrCode },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/system', label: 'System', icon: Settings },
 ];

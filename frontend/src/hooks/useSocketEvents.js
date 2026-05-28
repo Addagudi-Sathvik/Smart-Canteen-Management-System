@@ -41,8 +41,10 @@ export const useSocketEvents = () => {
       const messages = {
         confirmed: 'Order confirmed!',
         preparing: 'Your order is being prepared!',
-        ready: '🎉 Your order is ready for pickup!',
-        completed: 'Order completed. Enjoy your meal!',
+        ready: '🎉 Your order is ready for pickup! Show your QR at the counter.',
+        completed: order.qrUsed
+          ? '✅ Pickup verified! Enjoy your meal!'
+          : 'Order completed. Enjoy your meal!',
       };
 
       if (messages[order.status]) {

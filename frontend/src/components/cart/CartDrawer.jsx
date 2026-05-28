@@ -10,7 +10,7 @@ import {
   clearCart,
   selectCartTotal,
 } from '../../store/slices/cartSlice';
-import { createOrder } from '../../store/slices/orderSlice';
+import { createOrder, setActiveOrder } from '../../store/slices/orderSlice';
 import useRazorpay from '../../hooks/useRazorpay';
 import {
   generatePickupSlots,
@@ -129,7 +129,10 @@ const CartDrawer = () => {
         userName: user?.name || '',
         userEmail: user?.email || '',
         userPhone: user?.phone || '',
-        onSuccess: () => {
+        onSuccess: (paidOrder) => {
+          if (paidOrder) {
+            dispatch(setActiveOrder(paidOrder));
+          }
           dispatch(clearCart());
           dispatch(closeCart());
           navigate('/orders/active');

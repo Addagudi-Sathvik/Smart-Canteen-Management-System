@@ -1,6 +1,7 @@
 const Razorpay = require('razorpay');
 const crypto   = require('crypto');
 const Order    = require('../models/Order');
+const { generateQrToken, buildQrPayloadString } = require('../utils/qrService');
 
 const razorpay = new Razorpay({
   key_id:     process.env.RAZORPAY_KEY_ID,
@@ -71,18 +72,32 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: 'Payment verification failed. Invalid signature.' });
     }
 
-    // ✅ Update order: paid + confirmed
+    const qrToken = generateQrToken();
+    const qrGeneratedAt = new Date();
+
     const order = await Order.findByIdAndUpdate(
       orderId,
       {
         paymentStatus:   'paid',
         paymentId:       razorpay_payment_id,
         razorpayOrderId: razorpay_order_id,
-        status:          'confirmed',        // ✅ auto-confirm after payment
+        status:          'confirmed',
         'statusTimestamps.confirmed': new Date(),
+        qrToken,
+        qrUsed:          false,
+        qrGeneratedAt,
       },
       { new: true }
     ).populate('userId', 'name email avatar');
+
+    const qrPayload = buildQrPayloadString(order);
+    console.log('[QR] Generated after payment', {
+      orderId: order.orderId,
+      qrGeneratedAt,
+    });
+
+    const orderResponse = order.toObject();
+    orderResponse.qrPayload = qrPayload;
 
     // Emit real-time event to staff
     if (io) {
@@ -94,7 +109,7 @@ const verifyPayment = async (req, res) => {
       });
     }
 
-    res.json({ message: 'Payment verified successfully.', order });
+    res.json({ message: 'Payment verified successfully.', order: orderResponse });
   } catch (error) {
     res.status(500).json({ message: 'Payment verification failed.', error: error.message });
   }

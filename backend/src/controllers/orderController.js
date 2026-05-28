@@ -1,9 +1,22 @@
 const Order = require('../models/Order');
 const MenuItem = require('../models/MenuItem');
 const User = require('../models/User');
+const {
+  generateQrToken,
+  buildQrPayloadString,
+  parseQrPayload,
+} = require('../utils/qrService');
 
 let io;
 const setSocketIO = (socketIO) => { io = socketIO; };
+
+/** Never expose raw qrToken to students. */
+const sanitizeOrderForStudent = (order) => {
+  if (!order) return order;
+  const o = order.toObject ? order.toObject() : { ...order };
+  delete o.qrToken;
+  return o;
+};
 
 /**
  * POST /api/orders
@@ -154,7 +167,9 @@ const getOrder = async (req, res) => {
       return res.status(403).json({ message: 'Access denied.' });
     }
 
-    res.json({ order });
+    const payload =
+      req.user.role === 'student' ? sanitizeOrderForStudent(order) : order;
+    res.json({ order: payload });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch order.', error: error.message });
   }
@@ -170,7 +185,7 @@ const getMyOrders = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(20);
 
-    res.json({ orders });
+    res.json({ orders: orders.map(sanitizeOrderForStudent) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch orders.', error: error.message });
   }
@@ -308,12 +323,67 @@ const cancelOrder = async (req, res) => {
   }
 };
 
+const emitPickupVerified = (order) => {
+  if (!io) return;
+  io.emit('order:statusUpdate', order.toObject());
+  io.emit('notification', {
+    type:    'status_update',
+    message: `Order ${order.orderId} collected successfully`,
+    orderId: order.orderId,
+    status:  'completed',
+  });
+};
+
 /**
- * ✅ POST /api/orders/:id/verify-pickup
- * Staff scans QR code — marks order as completed (collected by student)
- * Only staff/admin can call this route
+ * Atomic QR pickup verification — single use only.
  */
-const verifyPickup = async (req, res) => {
+const completePickupByQr = async (order, verifiedBy) => {
+  if (order.qrUsed) {
+    return { error: 'QR already used', status: 409, order };
+  }
+  if (order.paymentStatus !== 'paid') {
+    return { error: 'Order is not paid.', status: 400, order };
+  }
+  if (order.status !== 'ready') {
+    return {
+      error: `Order is '${order.status}', not ready for pickup yet.`,
+      status: 400,
+      order,
+    };
+  }
+
+  const updated = await Order.findOneAndUpdate(
+    { _id: order._id, qrUsed: false, status: 'ready' },
+    {
+      qrUsed: true,
+      pickupVerifiedAt: new Date(),
+      status: 'completed',
+      'statusTimestamps.completed': new Date(),
+    },
+    { new: true }
+  ).populate('userId', 'name email avatar');
+
+  if (!updated) {
+    const current = await Order.findById(order._id).populate('userId', 'name email avatar');
+    if (current?.qrUsed) {
+      return { error: 'QR already used', status: 409, order: current };
+    }
+    return { error: 'Could not verify pickup. Please try again.', status: 400, order: current };
+  }
+
+  console.log('[QR] Pickup verified', {
+    orderId: updated.orderId,
+    verifiedBy: verifiedBy?.toString?.(),
+  });
+
+  emitPickupVerified(updated);
+  return { order: updated };
+};
+
+/**
+ * GET /api/orders/:id/qr — student fetches secure QR payload for paid order
+ */
+const getOrderQr = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
 
@@ -321,31 +391,199 @@ const verifyPickup = async (req, res) => {
       return res.status(404).json({ message: 'Order not found.' });
     }
 
-    // Only orders in 'ready' state can be picked up
-    if (order.status !== 'ready') {
-      return res.status(400).json({
-        message: `Order is '${order.status}', not ready for pickup.`,
+    if (
+      req.user.role === 'student' &&
+      order.userId.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    if (order.paymentStatus !== 'paid') {
+      return res.status(400).json({ message: 'QR code is not available until payment is complete.' });
+    }
+
+    // Backfill QR for paid legacy orders (no token yet)
+    if (!order.qrToken && !order.qrUsed) {
+      order.qrToken = generateQrToken();
+      order.qrGeneratedAt = new Date();
+      await order.save();
+      console.log('[QR] Backfilled token for legacy order', { orderId: order.orderId });
+    }
+
+    if (!order.qrToken) {
+      return res.status(400).json({ message: 'QR code is not available for this order.' });
+    }
+
+    if (order.qrUsed) {
+      return res.status(410).json({
+        message: 'QR already used',
+        qrUsed: true,
+        order: {
+          orderId: order.orderId,
+          status: order.status,
+          pickupSlot: order.pickupSlot,
+          qrUsed: true,
+          pickupVerifiedAt: order.pickupVerifiedAt,
+        },
       });
     }
 
-    order.status = 'completed';
-    order.statusTimestamps.completed = new Date();
-    await order.save();
+    const qrPayload = buildQrPayloadString(order);
+    if (!qrPayload) {
+      return res.status(500).json({ message: 'Failed to build QR payload.' });
+    }
 
-    await order.populate('userId', 'name email avatar');
-
-    // Notify student in real-time that their order was collected
-    if (io) {
-      io.emit('order:statusUpdate', order.toObject());
-      io.emit('notification', {
-        type:    'status_update',
-        message: `Order ${order.orderId} collected successfully`,
+    res.json({
+      qrPayload,
+      order: {
+        _id: order._id,
         orderId: order.orderId,
-        status:  'completed',
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        pickupSlot: order.pickupSlot,
+        qrUsed: order.qrUsed,
+        qrGeneratedAt: order.qrGeneratedAt,
+        totalAmount: order.totalAmount,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load QR code.', error: error.message });
+  }
+};
+
+/**
+ * POST /api/orders/pickup-lookup — staff/admin preview order before verify
+ */
+const lookupOrderForPickup = async (req, res) => {
+  try {
+    const { orderId, token } = req.body;
+    const filter = {};
+
+    if (orderId) {
+      filter.orderId = { $regex: new RegExp(`^${orderId.trim()}$`, 'i') };
+    }
+    if (token) {
+      filter.qrToken = token.trim();
+    }
+
+    if (!Object.keys(filter).length) {
+      return res.status(400).json({ message: 'Provide order ID or QR token.' });
+    }
+
+    const order = await Order.findOne(filter).populate('userId', 'name email avatar');
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found.' });
+    }
+
+    console.log('[QR] Lookup', { orderId: order.orderId, by: req.user.role });
+
+    res.json({
+      order: {
+        _id: order._id,
+        orderId: order.orderId,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        pickupSlot: order.pickupSlot,
+        totalAmount: order.totalAmount,
+        items: order.items,
+        qrUsed: order.qrUsed,
+        qrGeneratedAt: order.qrGeneratedAt,
+        pickupVerifiedAt: order.pickupVerifiedAt,
+        user: order.userId
+          ? { name: order.userId.name, email: order.userId.email }
+          : null,
+        qrToken: order.qrToken || null,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Lookup failed.', error: error.message });
+  }
+};
+
+/**
+ * POST /api/orders/verify-qr — verify scanned QR (staff/admin)
+ */
+const verifyQrPickup = async (req, res) => {
+  try {
+    const { qrPayload, orderId, token } = req.body;
+
+    let parsed = null;
+    if (qrPayload) {
+      parsed = parseQrPayload(qrPayload);
+      if (!parsed) {
+        console.warn('[QR] Invalid payload format');
+        return res.status(400).json({ message: 'Invalid QR code format.' });
+      }
+    } else if (orderId && token) {
+      parsed = { orderId: orderId.trim(), token: token.trim() };
+    } else {
+      return res.status(400).json({
+        message: 'Provide scanned QR payload or order ID with verification token.',
       });
     }
 
-    res.json({ order, message: 'Pickup verified. Order marked as completed.' });
+    const order = await Order.findOne({
+      orderId: { $regex: new RegExp(`^${parsed.orderId}$`, 'i') },
+      qrToken: parsed.token,
+    }).populate('userId', 'name email avatar');
+
+    if (!order) {
+      console.warn('[QR] Token mismatch', { orderId: parsed.orderId });
+      return res.status(404).json({ message: 'Invalid QR code. Order not found.' });
+    }
+
+    const result = await completePickupByQr(order, req.user._id);
+
+    if (result.error) {
+      return res.status(result.status).json({
+        message: result.error,
+        qrUsed: result.status === 409,
+        order: result.order,
+      });
+    }
+
+    res.json({
+      order: result.order,
+      message: 'Pickup verified. Order marked as completed.',
+    });
+  } catch (error) {
+    console.error('[QR] verify-qr error', error.message);
+    res.status(500).json({ message: 'Failed to verify pickup.', error: error.message });
+  }
+};
+
+/**
+ * POST /api/orders/:id/verify-pickup
+ * Manual verify with matching qrToken (staff/admin)
+ */
+const verifyPickup = async (req, res) => {
+  try {
+    const { qrToken } = req.body;
+    const order = await Order.findById(req.params.id).populate('userId', 'name email avatar');
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found.' });
+    }
+
+    if (!qrToken || order.qrToken !== qrToken) {
+      return res.status(403).json({ message: 'Invalid verification token.' });
+    }
+
+    const result = await completePickupByQr(order, req.user._id);
+
+    if (result.error) {
+      return res.status(result.status).json({
+        message: result.error,
+        qrUsed: result.status === 409,
+        order: result.order,
+      });
+    }
+
+    res.json({
+      order: result.order,
+      message: 'Pickup verified. Order marked as completed.',
+    });
   } catch (error) {
     res.status(500).json({ message: 'Failed to verify pickup.', error: error.message });
   }
@@ -361,5 +599,8 @@ module.exports = {
   updateOrderStatus,
   reorder,
   cancelOrder,
-  verifyPickup,   // ✅ export new function
+  getOrderQr,
+  lookupOrderForPickup,
+  verifyQrPickup,
+  verifyPickup,
 };

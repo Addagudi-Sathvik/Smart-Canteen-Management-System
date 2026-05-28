@@ -40,7 +40,7 @@ const useRazorpay = () => {
           theme: { color: '#d97706' },
           handler: async (response) => {
             try {
-              await paymentsAPI.verify({
+              const verifyRes = await paymentsAPI.verify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
@@ -48,7 +48,7 @@ const useRazorpay = () => {
               });
               toast.success('Payment successful!');
               setProcessing(false);
-              onSuccess?.();
+              onSuccess?.(verifyRes.data?.order);
             } catch {
               toast.error('Payment verification failed.');
               setProcessing(false);
