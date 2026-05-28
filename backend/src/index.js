@@ -3,7 +3,7 @@ const http = require('http');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
-const fs = require('fs'); // ✅ Added fs module to check folder existence
+const fs = require('fs'); // ✅ Kept for checking folder existence
 const env = require('./config/env');
 
 const connectDB = require('./config/db');
@@ -88,7 +88,7 @@ connectDB()
       console.log(`📡 Port: ${port}`);
       console.log(`🌍 Environment: ${env.NODE_ENV}`);
       console.log(`🔗 Frontend URL: ${allowedOrigin}`);
-      console.log(`📂 Resolved Uploads Path: ${uploadsPath}`); // Helpful logging during startup
+      console.log(`📂 Resolved Uploads Path: ${uploadsPath}`); // Confirms exact directory path in logs
       console.log(`📅 ${new Date().toISOString()}\n`);
     });
   })
