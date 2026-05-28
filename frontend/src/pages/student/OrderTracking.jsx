@@ -1,20 +1,86 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { motion } from 'framer-motion';
+import QRCode from 'qrcode';
 import { fetchActiveOrder, fetchMyOrders } from '../../store/slices/orderSlice';
 import Card from '../../components/ui/Card';
 import EmptyState from '../../components/ui/EmptyState';
 import PageHeader from '../../components/ui/PageHeader';
-import { ShoppingBag, Clock, ChefHat, Package, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { ShoppingBag, ChefHat, Package, CheckCircle2, ArrowLeft, Clock, QrCode } from 'lucide-react';
 
 const statusFlow = ['confirmed', 'preparing', 'ready', 'completed'];
 
 const statusConfig = {
-  confirmed: { icon: ShoppingBag, label: 'Order Confirmed', description: 'Your order has been received', color: 'text-sky-500', bg: 'bg-sky-100 dark:bg-sky-900/30', line: 'bg-sky-500' },
-  preparing: { icon: ChefHat, label: 'Preparing', description: 'Our chefs are cooking your food', color: 'text-brand-500', bg: 'bg-brand-100 dark:bg-brand-900/30', line: 'bg-brand-500' },
-  ready: { icon: Package, label: 'Ready for Pickup', description: 'Show your Order ID at the counter', color: 'text-accent-500', bg: 'bg-accent-100 dark:bg-accent-900/30', line: 'bg-accent-500' },
-  completed: { icon: CheckCircle2, label: 'Completed', description: 'Enjoy your meal!', color: 'text-espresso-500', bg: 'bg-espresso-100 dark:bg-espresso-800', line: 'bg-espresso-400' },
+  confirmed: {
+    icon: ShoppingBag,
+    label: 'Order Confirmed',
+    description: 'Your order has been received',
+    color: 'text-sky-500',
+    bg: 'bg-sky-100 dark:bg-sky-900/30',
+    line: 'bg-sky-500',
+  },
+  preparing: {
+    icon: ChefHat,
+    label: 'Preparing',
+    description: 'Our chefs are cooking your food',
+    color: 'text-brand-500',
+    bg: 'bg-brand-100 dark:bg-brand-900/30',
+    line: 'bg-brand-500',
+  },
+  ready: {
+    icon: Package,
+    label: 'Ready for Pickup',
+    description: 'Show your QR code at the counter',
+    color: 'text-accent-500',
+    bg: 'bg-accent-100 dark:bg-accent-900/30',
+    line: 'bg-accent-500',
+  },
+  completed: {
+    icon: CheckCircle2,
+    label: 'Completed',
+    description: 'Enjoy your meal!',
+    color: 'text-espresso-500',
+    bg: 'bg-espresso-100 dark:bg-espresso-800',
+    line: 'bg-espresso-400',
+  },
+};
+
+// ✅ QR Code display component — generates a canvas QR from orderId
+const OrderQRCode = ({ orderId }) => {
+  const canvasRef = useRef(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!canvasRef.current || !orderId) return;
+    QRCode.toCanvas(canvasRef.current, orderId, {
+      width: 180,
+      margin: 2,
+      color: { dark: '#1a0a00', light: '#fffbf5' }, // espresso on cream
+    }, (err) => {
+      if (err) setError(true);
+    });
+  }, [orderId]);
+
+  if (error) {
+    return (
+      <p className="text-sm text-espresso-400 text-center">
+        QR unavailable — show Order ID: <span className="font-bold">{orderId}</span>
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <canvas
+        ref={canvasRef}
+        className="rounded-2xl border-4 border-white dark:border-espresso-800 shadow-elevated"
+      />
+      <p className="text-xs text-espresso-400 font-medium tracking-wider uppercase">
+        Scan at counter to collect
+      </p>
+    </div>
+  );
 };
 
 const OrderTracking = () => {
@@ -31,7 +97,9 @@ const OrderTracking = () => {
   useEffect(() => {
     if (activeOrder) setDisplayOrder(activeOrder);
     else if (orders.length > 0) {
-      const latest = orders.find((o) => ['confirmed', 'preparing', 'ready'].includes(o.status));
+      const latest = orders.find((o) =>
+        ['confirmed', 'preparing', 'ready'].includes(o.status)
+      );
       setDisplayOrder(latest || orders[0]);
     }
   }, [activeOrder, orders]);
@@ -72,15 +140,27 @@ const OrderTracking = () => {
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
 
+      {/* Order ID + Pickup Slot */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="text-center">
           <p className="text-sm font-medium text-espresso-500">Order ID</p>
           <h1 className="text-3xl sm:text-4xl font-display font-bold text-espresso-900 dark:text-espresso-50 tracking-wider mt-1">
             {order.orderId}
           </h1>
+
+          {/* ✅ Pickup slot badge */}
+          {order.pickupSlot && (
+            <div className="inline-flex items-center gap-1.5 mt-3 px-4 py-1.5 bg-brand-50 dark:bg-brand-900/30 rounded-full">
+              <Clock className="w-3.5 h-3.5 text-brand-500" />
+              <span className="text-sm font-semibold text-brand-600 dark:text-brand-400">
+                Pickup at {order.pickupSlot}
+              </span>
+            </div>
+          )}
+
           {isActive && (
             <motion.p
-              className="text-sm text-brand-600 dark:text-brand-400 font-medium mt-3"
+              className="text-sm text-espresso-500 dark:text-espresso-400 font-medium mt-2"
               animate={{ opacity: [1, 0.6, 1] }}
               transition={{ duration: 2, repeat: Infinity }}
             >
@@ -90,6 +170,32 @@ const OrderTracking = () => {
         </Card>
       </motion.div>
 
+      {/* ✅ QR Code card — only shown when order is 'ready' */}
+      {order.status === 'ready' && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+        >
+          <Card className="text-center bg-gradient-to-b from-accent-50/60 to-white dark:from-accent-900/20 dark:to-espresso-950">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <QrCode className="w-5 h-5 text-accent-500" />
+              <h2 className="text-lg font-bold text-espresso-900 dark:text-espresso-50">
+                Show this at the counter
+              </h2>
+            </div>
+            <OrderQRCode orderId={order.orderId} />
+            <p className="mt-4 text-sm text-espresso-500">
+              Counter <span className="font-bold text-espresso-700 dark:text-espresso-300">{order.counterNumber || 1}</span>
+              {order.pickupSlot && (
+                <> · Slot <span className="font-bold text-brand-600">{order.pickupSlot}</span></>
+              )}
+            </p>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Progress Timeline */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <Card>
           <h2 className="text-lg font-bold text-espresso-900 dark:text-espresso-50 mb-6">Order Progress</h2>
@@ -144,13 +250,19 @@ const OrderTracking = () => {
         </Card>
       </motion.div>
 
+      {/* Order Details */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
         <Card>
           <h2 className="text-lg font-bold mb-4">Order Details</h2>
           <div className="space-y-3">
             {order.items?.map((item, i) => (
-              <div key={i} className="flex justify-between py-2 border-b border-espresso-100 dark:border-espresso-800 last:border-0">
-                <span className="text-sm font-medium"><span className="text-espresso-500">{item.quantity}×</span> {item.name}</span>
+              <div
+                key={i}
+                className="flex justify-between py-2 border-b border-espresso-100 dark:border-espresso-800 last:border-0"
+              >
+                <span className="text-sm font-medium">
+                  <span className="text-espresso-500">{item.quantity}×</span> {item.name}
+                </span>
                 <span className="text-sm font-semibold">₹{item.price * item.quantity}</span>
               </div>
             ))}
@@ -159,24 +271,15 @@ const OrderTracking = () => {
             <span className="font-bold">Total</span>
             <span className="text-xl font-bold text-brand-600">₹{order.totalAmount}</span>
           </div>
-          <div className="flex items-center gap-2 mt-3 text-sm text-espresso-500">
-            <Clock className="w-4 h-4" />
-            Est. {order.estimatedPrepTime} min preparation
-          </div>
+          {/* ✅ Show pickup slot here too, removed estimatedPrepTime */}
+          {order.pickupSlot && (
+            <div className="flex items-center gap-2 mt-3 text-sm text-espresso-500">
+              <Clock className="w-4 h-4" />
+              Pickup slot: <span className="font-semibold text-brand-600">{order.pickupSlot}</span>
+            </div>
+          )}
         </Card>
       </motion.div>
-
-      {order.status === 'ready' && (
-        <motion.div
-          className="rounded-2xl p-6 bg-gradient-to-r from-accent-500 to-accent-600 text-white text-center shadow-elevated"
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-        >
-          <Package className="w-10 h-10 mx-auto mb-2" />
-          <h3 className="text-xl font-display font-bold">Ready for Pickup!</h3>
-          <p className="text-accent-100 mt-1">Show &quot;{order.orderId}&quot; at counter {order.counterNumber || 1}</p>
-        </motion.div>
-      )}
     </div>
   );
 };

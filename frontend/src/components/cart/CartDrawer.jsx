@@ -14,9 +14,22 @@ import { createOrder } from '../../store/slices/orderSlice';
 import { motionSpring } from '../../config/navigation';
 import Button from '../ui/Button';
 import EmptyState from '../ui/EmptyState';
-import { ShoppingCart, Trash2, Plus, Minus, X, ArrowRight } from 'lucide-react';
+import { ShoppingCart, Trash2, Plus, Minus, X, ArrowRight, Clock } from 'lucide-react';
 import { useState } from 'react';
-import useRazorpay from '../../hooks/useRazorpay'; // ✅ ADDED
+import useRazorpay from '../../hooks/useRazorpay';
+
+// Pickup slots available every 15 minutes from 12:00 PM to 2:00 PM
+const PICKUP_SLOTS = [
+  '12:00 PM',
+  '12:15 PM',
+  '12:30 PM',
+  '12:45 PM',
+  '1:00 PM',
+  '1:15 PM',
+  '1:30 PM',
+  '1:45 PM',
+  '2:00 PM',
+];
 
 const CartDrawer = () => {
   const dispatch = useDispatch();
@@ -25,17 +38,26 @@ const CartDrawer = () => {
   const total = useSelector(selectCartTotal);
   const count = useSelector(selectCartCount);
   const { loading } = useSelector((state) => state.orders);
-  const user = useSelector((state) => state.auth.user); // ✅ ADDED — get logged-in user
+  const user = useSelector((state) => state.auth.user);
   const [ordering, setOrdering] = useState(false);
 
-  const { initiatePayment, processing } = useRazorpay(); // ✅ ADDED
+  // Pickup slot state — default to first slot
+  const [selectedSlot, setSelectedSlot] = useState(PICKUP_SLOTS[0]);
 
-  // ✅ REPLACED handleCheckout with handlePlaceOrder
+  const { initiatePayment, processing } = useRazorpay();
+
   const handlePlaceOrder = async () => {
     if (items.length === 0) return;
+
+    // Guard — slot must be selected (it always will be since we default, but safety check)
+    if (!selectedSlot) {
+      toast.error('Please select a pickup time slot.');
+      return;
+    }
+
     setOrdering(true);
     try {
-      // Step 1 — Create the order in your DB as usual
+      // Step 1 — Create the order in DB, include pickupSlot
       const result = await dispatch(createOrder({
         items: items.map((item) => ({
           menuItem: item.menuItem,
@@ -43,6 +65,7 @@ const CartDrawer = () => {
           quantity: item.quantity,
           price: item.price,
         })),
+        pickupSlot: selectedSlot, // ✅ sent to backend
       })).unwrap();
 
       if (result.order) {
@@ -57,12 +80,10 @@ const CartDrawer = () => {
           onSuccess: () => {
             dispatch(clearCart());
             dispatch(closeCart());
-            toast.success('Payment successful!');
+            toast.success(`Order placed! Pickup at ${selectedSlot} 🎉`);
             navigate('/orders/active');
           },
           onFailure: () => {
-            // Order exists in DB but payment failed/cancelled
-            // Keep cart open so student can retry
             toast.error('Payment was not completed. Please try again.');
           },
         });
@@ -93,6 +114,7 @@ const CartDrawer = () => {
             exit={{ x: '100%' }}
             transition={motionSpring}
           >
+            {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-brand-200/40 dark:border-brand-800/30">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center">
@@ -124,6 +146,7 @@ const CartDrawer = () => {
                 />
               ) : (
                 <>
+                  {/* Cart Items */}
                   <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                     <AnimatePresence>
                       {items.map((item) => (
@@ -172,7 +195,39 @@ const CartDrawer = () => {
                     </AnimatePresence>
                   </div>
 
-                  <div className="border-t border-brand-200/40 dark:border-brand-800/30 px-5 py-4 space-y-3 bg-white/50 dark:bg-espresso-950/50">
+                  {/* Checkout Panel */}
+                  <div className="border-t border-brand-200/40 dark:border-brand-800/30 px-5 py-4 space-y-4 bg-white/50 dark:bg-espresso-950/50">
+
+                    {/* ✅ Pickup Slot Picker */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Clock className="w-4 h-4 text-brand-600" />
+                        <span className="text-sm font-semibold text-espresso-700 dark:text-espresso-300">
+                          Pick up time
+                        </span>
+                        <span className="ml-auto text-xs font-bold text-brand-600 bg-brand-50 dark:bg-brand-900/40 px-2 py-0.5 rounded-full">
+                          {selectedSlot}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {PICKUP_SLOTS.map((slot) => (
+                          <button
+                            key={slot}
+                            type="button"
+                            onClick={() => setSelectedSlot(slot)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all min-h-[36px] ${
+                              selectedSlot === slot
+                                ? 'bg-brand-500 border-brand-500 text-white shadow-sm'
+                                : 'bg-white dark:bg-espresso-900 border-espresso-200 dark:border-espresso-700 text-espresso-600 dark:text-espresso-400 hover:border-brand-400 hover:text-brand-600'
+                            }`}
+                          >
+                            {slot}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Subtotal + Action Buttons */}
                     <div className="flex justify-between items-center">
                       <span className="text-espresso-500 font-medium">Subtotal</span>
                       <span className="text-xl font-display font-bold">₹{total}</span>
@@ -181,7 +236,6 @@ const CartDrawer = () => {
                       <Button variant="secondary" className="flex-1" onClick={() => dispatch(clearCart())}>
                         Clear
                       </Button>
-                      {/* ✅ onClick now calls handlePlaceOrder, disabled also checks processing */}
                       <Button
                         className="flex-1"
                         onClick={handlePlaceOrder}

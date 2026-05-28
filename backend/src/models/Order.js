@@ -40,22 +40,19 @@ const orderSchema = new mongoose.Schema({
     enum: ['pending', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'],
     default: 'pending',
   },
-  estimatedPrepTime: {
-    type: Number,
-    default: 10,
-  },
+  // Pickup slot chosen by student at checkout (e.g. "12:00 PM", "12:15 PM")
   pickupSlot: {
     type: String,
-    default: '',
+    required: true,
+    default: '12:00 PM',
   },
   counterNumber: {
     type: Number,
     default: 1,
   },
-  // ✅ Updated payment fields
   paymentStatus: {
     type: String,
-    enum: ['pending', 'paid', 'failed'],  // changed 'success' → 'paid'
+    enum: ['pending', 'paid', 'failed'],
     default: 'pending',
   },
   paymentMethod: {
@@ -63,7 +60,6 @@ const orderSchema = new mongoose.Schema({
     enum: ['online', 'counter'],
     default: 'online',
   },
-  // ✅ New Razorpay fields
   paymentId: {
     type: String,
     default: '',
@@ -79,12 +75,12 @@ const orderSchema = new mongoose.Schema({
     default: '',
   },
   statusTimestamps: {
-    placed:     { type: Date, default: Date.now },
-    confirmed:  Date,
-    preparing:  Date,
-    ready:      Date,
-    completed:  Date,
-    cancelled:  Date,
+    placed:    { type: Date, default: Date.now },
+    confirmed: Date,
+    preparing: Date,
+    ready:     Date,
+    completed: Date,
+    cancelled: Date,
   },
 }, {
   timestamps: true,
@@ -92,6 +88,7 @@ const orderSchema = new mongoose.Schema({
 
 orderSchema.index({ userId: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ pickupSlot: 1, status: 1 }); // new index for slot grouping queries
 
 orderSchema.statics.generateOrderId = async function () {
   const count = await this.countDocuments();

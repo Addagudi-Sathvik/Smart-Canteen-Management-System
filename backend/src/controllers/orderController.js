@@ -12,7 +12,12 @@ const setSocketIO = (socketIO) => { io = socketIO; };
  */
 const createOrder = async (req, res) => {
   try {
-    const { items, notes } = req.body;
+    const { items, notes, pickupSlot } = req.body; // ✅ pickupSlot from CartDrawer
+
+    // Validate pickupSlot is provided
+    if (!pickupSlot) {
+      return res.status(400).json({ message: 'Please select a pickup time slot.' });
+    }
 
     // Check for existing active order
     const existingOrder = await Order.findOne({
@@ -60,22 +65,16 @@ const createOrder = async (req, res) => {
     // Generate order ID
     const orderId = await Order.generateOrderId();
 
-    // Calculate estimated prep time
-    const prepTimes = await Promise.all(
-      items.map(item => MenuItem.findById(item.menuItem).then(m => m.preparationTime))
-    );
-    const estimatedPrepTime = Math.max(...prepTimes, 5);
-
-    // ✅ Create order with pending payment — Razorpay will update this
+    // ✅ Create order — pickupSlot saved, estimatedPrepTime removed
     const order = await Order.create({
       orderId,
       userId:           req.user._id,
       items:            validatedItems,
       totalAmount,
-      status:           'pending',       // ✅ pending until payment confirmed
-      estimatedPrepTime,
+      status:           'pending',
+      pickupSlot,                        // ✅ saved from request body
       notes,
-      paymentStatus:    'pending',       // ✅ pending until Razorpay verifies
+      paymentStatus:    'pending',
       paymentMethod:    'online',
       statusTimestamps: { placed: new Date() },
     });
@@ -97,7 +96,6 @@ const createOrder = async (req, res) => {
       });
     }
 
-    // ✅ Return order so frontend can use _id for Razorpay payment
     res.status(201).json({ order, message: 'Order created. Proceed to payment.' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to create order.', error: error.message });
@@ -257,6 +255,9 @@ const reorder = async (req, res) => {
       price:    item.price,
     }));
 
+    // ✅ Carry forward the pickupSlot from previous order on reorder
+    req.body.pickupSlot = previousOrder.pickupSlot || '12:00 PM';
+
     return createOrder(req, res);
   } catch (error) {
     res.status(500).json({ message: 'Failed to reorder.', error: error.message });
@@ -284,7 +285,6 @@ const cancelOrder = async (req, res) => {
     order.status = 'cancelled';
     order.statusTimestamps.cancelled = new Date();
 
-    // ✅ If payment was made, mark as failed for refund tracking
     if (order.paymentStatus === 'paid') {
       order.paymentStatus = 'failed';
     }
@@ -308,6 +308,49 @@ const cancelOrder = async (req, res) => {
   }
 };
 
+/**
+ * ✅ POST /api/orders/:id/verify-pickup
+ * Staff scans QR code — marks order as completed (collected by student)
+ * Only staff/admin can call this route
+ */
+const verifyPickup = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found.' });
+    }
+
+    // Only orders in 'ready' state can be picked up
+    if (order.status !== 'ready') {
+      return res.status(400).json({
+        message: `Order is '${order.status}', not ready for pickup.`,
+      });
+    }
+
+    order.status = 'completed';
+    order.statusTimestamps.completed = new Date();
+    await order.save();
+
+    await order.populate('userId', 'name email avatar');
+
+    // Notify student in real-time that their order was collected
+    if (io) {
+      io.emit('order:statusUpdate', order.toObject());
+      io.emit('notification', {
+        type:    'status_update',
+        message: `Order ${order.orderId} collected successfully`,
+        orderId: order.orderId,
+        status:  'completed',
+      });
+    }
+
+    res.json({ order, message: 'Pickup verified. Order marked as completed.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to verify pickup.', error: error.message });
+  }
+};
+
 module.exports = {
   setSocketIO,
   createOrder,
@@ -318,4 +361,5 @@ module.exports = {
   updateOrderStatus,
   reorder,
   cancelOrder,
+  verifyPickup,   // ✅ export new function
 };
