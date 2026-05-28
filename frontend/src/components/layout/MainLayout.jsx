@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import Navbar from './Navbar';
@@ -11,17 +11,20 @@ const MainLayout = () => {
   const { user } = useSelector((state) => state.auth);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const openSidebar = useCallback(() => setSidebarOpen(true), []);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
   const isStudent = user?.role === 'student';
   const showSidebar = user?.role === 'staff' || user?.role === 'admin';
 
   return (
     <div className="min-h-screen mesh-bg flex flex-col">
-      <Navbar onMenuClick={() => setSidebarOpen(true)} />
+      <Navbar onMenuClick={openSidebar} />
 
       <div className="flex flex-1 max-w-[1600px] mx-auto w-full">
         {showSidebar && (
           <>
-            <Sidebar user={user} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} isMobile />
+            <Sidebar user={user} isOpen={sidebarOpen} onClose={closeSidebar} isMobile />
             <Sidebar user={user} onClose={() => {}} />
           </>
         )}

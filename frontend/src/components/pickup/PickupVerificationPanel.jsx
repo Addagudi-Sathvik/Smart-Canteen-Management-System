@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { ordersAPI } from '../../utils/api';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import QrCameraScanner from './QrCameraScanner';
 import {
   QrCode,
   Search,
@@ -32,26 +33,7 @@ const PickupVerificationPanel = () => {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const scannerRef = useRef(null);
-  const scannerInstance = useRef(null);
-
-  const stopScanner = async () => {
-    if (scannerInstance.current) {
-      try {
-        await scannerInstance.current.stop();
-        await scannerInstance.current.clear();
-      } catch {
-        /* ignore */
-      }
-      scannerInstance.current = null;
-    }
-    setScanning(false);
-  };
-
-  useEffect(() => () => {
-    stopScanner();
-  }, []);
+  const [cameraActive, setCameraActive] = useState(false);
 
   const handleLookup = async (e) => {
     e?.preventDefault();
@@ -74,10 +56,14 @@ const PickupVerificationPanel = () => {
     }
   };
 
-  const handleVerifyFromQr = async (payloadString) => {
+  const handleVerifyFromQr = useCallback(async (payloadString) => {
+    const raw = payloadString?.trim();
+    if (!raw) return;
+
     setVerifying(true);
+    setCameraActive(false);
     try {
-      const { data } = await ordersAPI.verifyQr({ qrPayload: payloadString });
+      const { data } = await ordersAPI.verifyQr({ qrPayload: raw });
       setPreview(data.order);
       setQrPaste('');
       toast.success(data.message || 'Pickup verified!');
@@ -90,7 +76,7 @@ const PickupVerificationPanel = () => {
     } finally {
       setVerifying(false);
     }
-  };
+  }, []);
 
   const handleVerifyScanned = async (e) => {
     e.preventDefault();
@@ -127,35 +113,8 @@ const PickupVerificationPanel = () => {
     }
   };
 
-  const startScanner = async () => {
-    if (scanning) {
-      await stopScanner();
-      return;
-    }
-
-    try {
-      const { Html5QrcodeScanner } = await import('html5-qrcode');
-      setScanning(true);
-
-      const scanner = new Html5QrcodeScanner(
-        'qr-reader',
-        { fps: 10, qrbox: { width: 220, height: 220 } },
-        false
-      );
-      scannerInstance.current = scanner;
-
-      scanner.render(
-        async (decodedText) => {
-          setQrPaste(decodedText);
-          await stopScanner();
-          await handleVerifyFromQr(decodedText);
-        },
-        () => {}
-      );
-    } catch {
-      toast.error('Camera scanner unavailable. Paste QR data manually.');
-      setScanning(false);
-    }
+  const toggleCamera = () => {
+    setCameraActive((prev) => !prev);
   };
 
   return (
@@ -177,14 +136,33 @@ const PickupVerificationPanel = () => {
               onChange={(e) => setOrderIdInput(e.target.value.toUpperCase())}
             />
           </div>
-          <Button type="submit" loading={loading} className="sm:w-auto">
+          <Button type="submit" loading={loading} className="sm:w-auto min-h-[44px]">
             Lookup
           </Button>
         </form>
 
         <div className="space-y-3">
-          <label className="block text-sm font-medium text-espresso-600 dark:text-espresso-400">
-            Paste scanned QR JSON
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={cameraActive ? 'secondary' : 'primary'}
+              onClick={toggleCamera}
+              disabled={verifying}
+              className="flex items-center gap-2 min-h-[44px] touch-manipulation"
+            >
+              <QrCode className="w-4 h-4" />
+              {cameraActive ? 'Stop camera' : 'Scan with camera'}
+            </Button>
+          </div>
+
+          <QrCameraScanner
+            active={cameraActive}
+            onScan={handleVerifyFromQr}
+            onClose={() => setCameraActive(false)}
+          />
+
+          <label className="block text-sm font-medium text-espresso-600 dark:text-espresso-400 pt-2">
+            Or paste scanned QR JSON
           </label>
           <textarea
             value={qrPaste}
@@ -193,32 +171,17 @@ const PickupVerificationPanel = () => {
             placeholder='{"v":1,"o":"ORD0001","t":"...","p":"10:00 AM","ts":...}'
             className="w-full rounded-xl border border-brand-200/60 dark:border-brand-800/40 bg-white dark:bg-espresso-800 text-sm font-mono px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleVerifyScanned}
-              loading={verifying}
-              className="flex items-center gap-2"
-            >
-              <ScanLine className="w-4 h-4" />
-              Verify pasted QR
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={startScanner}
-              className="flex items-center gap-2"
-            >
-              <QrCode className="w-4 h-4" />
-              {scanning ? 'Stop camera' : 'Scan with camera'}
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleVerifyScanned}
+            loading={verifying}
+            className="flex items-center gap-2 min-h-[44px] w-full sm:w-auto touch-manipulation"
+          >
+            <ScanLine className="w-4 h-4" />
+            Verify pasted QR
+          </Button>
         </div>
-
-        {scanning && (
-          <div id="qr-reader" ref={scannerRef} className="mt-4 rounded-xl overflow-hidden" />
-        )}
       </Card>
 
       <AnimatePresence mode="wait">
@@ -296,7 +259,7 @@ const PickupVerificationPanel = () => {
                   type="button"
                   onClick={handleMarkPickedUp}
                   loading={verifying}
-                  className="w-full flex items-center justify-center gap-2"
+                  className="w-full flex items-center justify-center gap-2 min-h-[48px] touch-manipulation"
                 >
                   <CheckCircle2 className="w-5 h-5" />
                   Mark as Picked Up
